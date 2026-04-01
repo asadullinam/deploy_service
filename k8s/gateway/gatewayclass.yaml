@@ -1,0 +1,10 @@
+# GatewayClass — cluster-scoped, устанавливается один раз ops-командой.
+# Контроллер: nginx-gateway-fabric (https://github.com/nginxinc/nginx-gateway-fabric).
+# Альтернативы: Envoy Gateway (controllerName: gateway.envoyproxy.io/gatewayclass-controller),
+#               Cilium (io.cilium/gateway-controller), Istio (istio.io/gateway-controller).
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: nginx
+spec:
+  controllerName: k8s.nginx.org/nginx-gateway-controller

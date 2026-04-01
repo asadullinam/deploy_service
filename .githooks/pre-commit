@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+staged_files=()
+while IFS= read -r file; do
+  [[ -n "$file" ]] || continue
+  staged_files+=("$file")
+done < <(git diff --cached --name-only --diff-filter=ACMR | sed '/^$/d')
+
+./scripts/format-files.sh --staged
+
+if [[ "${#staged_files[@]}" -gt 0 ]]; then
+  git add -- "${staged_files[@]}"
+fi

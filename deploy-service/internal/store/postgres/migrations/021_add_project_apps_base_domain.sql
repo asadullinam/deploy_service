@@ -1,0 +1,1 @@
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS apps_base_domain TEXT NOT NULL DEFAULT '';

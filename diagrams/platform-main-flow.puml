@@ -1,0 +1,46 @@
+@startuml
+title Основные потоки взаимодействия в платформе deploy-service
+top to bottom direction
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName "Times New Roman"
+skinparam defaultFontSize 18
+skinparam rectangle {
+  BackgroundColor white
+  BorderColor black
+  FontColor black
+  RoundCorner 6
+}
+skinparam actor {
+  BorderColor black
+  FontColor black
+}
+skinparam database {
+  BackgroundColor white
+  BorderColor black
+  FontColor black
+}
+
+actor User as "Пользователь"
+rectangle UI as "Web UI и HTTP API"
+rectangle Deploy as "deploy-service\nсервисная логика платформы"
+
+rectangle GitHub as "GitHub\nbootstrap, workflow,\nwebhook"
+rectangle K8s as "Kubernetes и vcluster\nокружение проекта,\nruntime-status,\nkubeconfig"
+rectangle Obs as "Loki и Grafana\nлоги и метрики"
+rectangle Tg as "Telegram\nпользовательские\nи системные сообщения"
+database DB as "PostgreSQL\nпользователи,\nпроекты,\nрелизы,\nбиллинг"
+
+User --> UI : работает в консоли
+UI --> Deploy : запросы и команды
+
+Deploy --> DB : хранит состояние
+Deploy --> GitHub : готовит релизный контур
+Deploy --> K8s : создает окружение и читает статус
+Deploy --> Obs : открывает логи и Grafana
+Deploy --> Tg : отправляет уведомления
+
+GitHub --> K8s : применяет manifests
+K8s --> Obs : метрики и журналы
+
+@enduml

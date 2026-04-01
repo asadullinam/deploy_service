@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - prometheus-rbac.yaml
+  - prometheus-config.yaml
+  - prometheus-pvc.yaml
+  - prometheus-deployment.yaml
+  - prometheus-service.yaml
+  - loki-config.yaml
+  - loki-pvc.yaml
+  - loki-deployment.yaml
+  - loki-service.yaml
+  - promtail.yaml

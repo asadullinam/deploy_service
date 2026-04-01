@@ -1,0 +1,2 @@
+ALTER TABLE projects
+ADD COLUMN IF NOT EXISTS kubeconfig_encrypted TEXT NOT NULL DEFAULT '';

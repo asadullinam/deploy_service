@@ -1,0 +1,40 @@
+name: Deploy Service System Tests
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kubernetes-system-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Docker versions
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Run deploy-service system tests
+        run: ./deploy-service/scripts/test-system.sh
+
+      - name: Dump k3s logs on failure
+        if: failure()
+        run: |
+          export SYSTEM_TEST_REPO_ROOT="$GITHUB_WORKSPACE"
+          COMPOSE_FILE="$GITHUB_WORKSPACE/deploy-service/tests/system/docker-compose.system.yml"
+          docker compose -f "$COMPOSE_FILE" ps || true
+          docker compose -f "$COMPOSE_FILE" logs k3s || true
+          docker compose -f "$COMPOSE_FILE" logs system-tests || true
+
+      - name: Cleanup system test containers
+        if: always()
+        run: |
+          export SYSTEM_TEST_REPO_ROOT="$GITHUB_WORKSPACE"
+          COMPOSE_FILE="$GITHUB_WORKSPACE/deploy-service/tests/system/docker-compose.system.yml"
+          docker compose -f "$COMPOSE_FILE" down -v --remove-orphans || true

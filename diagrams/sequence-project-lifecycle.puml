@@ -1,0 +1,121 @@
+@startuml
+title Жизненный цикл проекта в deploy-service
+autonumber
+
+actor User as "Пользователь"
+participant UI as "Web UI / HTTP API"
+participant Deploy as "deploy-service"
+database DB as "PostgreSQL"
+participant K8s as "Kubernetes Provisioner"
+participant Cluster as "Host cluster + vcluster"
+participant GitHubFlow as "GitHub automation"
+participant GitHub as "GitHub Actions / Webhooks"
+participant Logs as "Loki"
+participant Metrics as "Metrics collector"
+participant Billing as "Monetization + Billing guard"
+participant Telegram as "Telegram notifications"
+
+== 1. Аутентификация ==
+User -> UI: Регистрация / вход
+UI -> Deploy: POST /auth/register или /auth/login
+Deploy -> DB: Создать пользователя / проверить credentials
+DB --> Deploy: Пользователь найден / создан
+Deploy --> UI: JWT + профиль пользователя
+UI --> User: Доступ к консоли
+
+== 2. Создание проекта ==
+User -> UI: Создать проект
+UI -> Deploy: POST /projects
+Deploy -> DB: Сохранить проект со статусом creating
+Deploy --> UI: Project ID + статус creating
+UI --> User: Проект отображается в списке
+
+par Фоновое провиженирование
+  Deploy -> K8s: provisionProject(projectID)
+  K8s -> Cluster: Создать namespace проекта
+  K8s -> Cluster: Поднять vcluster
+  K8s -> Cluster: Применить NetworkPolicy и ResourceQuota
+  K8s -> Cluster: Получить kubeconfig проекта
+  K8s -> Cluster: Развернуть project Grafana
+  Cluster --> K8s: Инфраструктура готова
+  K8s --> Deploy: publicURL, grafanaURL, kubeconfig
+  Deploy -> DB: Обновить проект до active
+else Пользовательский опрос статуса
+  User -> UI: Открыть карточку проекта
+  UI -> Deploy: GET /projects/{id}
+  Deploy -> DB: Прочитать проект
+  DB --> Deploy: Текущие поля проекта
+  Deploy --> UI: Статус, ссылки, настройки
+end
+
+== 3. Подключение репозитория и выпуск ==
+User -> UI: Выбрать репозиторий и параметры deploy
+UI -> Deploy: POST /projects/{id}/github/questions
+Deploy -> GitHubFlow: BuildBootstrapQuestions(...)
+GitHubFlow -> GitHub: Анализ репозитория
+GitHub --> GitHubFlow: Ветка, Dockerfile, сервис, порты
+GitHubFlow --> Deploy: Предзаполненные вопросы
+Deploy --> UI: Варианты bootstrap
+
+User -> UI: Подтвердить bootstrap
+UI -> Deploy: POST /projects/{id}/github/bootstrap
+Deploy -> Billing: Проверить billing guard перед новым релизом
+Billing --> Deploy: Разрешено / запрещено
+Deploy -> GitHubFlow: BootstrapRepositoryFlow(...)
+GitHubFlow -> GitHub: Создать ветку, workflow, manifests, PR
+GitHub --> GitHubFlow: pullRequestURL + webhook registration
+GitHubFlow --> Deploy: PR создан
+Deploy -> DB: Сохранить release со статусом pending
+Deploy --> UI: Ссылка на PR и release
+UI --> User: Пользователь мержит PR
+
+GitHub -> Cluster: Workflow собирает образ и применяет manifests
+Cluster --> GitHub: Deploy завершен
+GitHub -> Deploy: POST /webhooks/github
+Deploy -> DB: Обновить release и проектный статус
+Deploy --> UI: Новый статус релиза
+UI --> User: В интерфейсе виден результат выкладки
+
+== 4. Эксплуатация проекта ==
+User -> UI: Открыть вкладку состояния
+UI -> Deploy: GET /projects/{id}/runtime-status
+Deploy -> K8s: Получить runtime status
+K8s -> Cluster: Проверить namespace, deployment, pods, route
+Cluster --> K8s: Runtime status
+K8s --> Deploy: ProjectRuntimeStatus
+Deploy --> UI: Реплики, pod'ы, URL, диагностика
+
+User -> UI: Скачать kubeconfig
+UI -> Deploy: GET /projects/{id}/kubeconfig
+Deploy -> DB: Прочитать зашифрованный kubeconfig
+DB --> Deploy: encrypted kubeconfig
+Deploy --> UI: kubeconfig или base64
+
+User -> UI: Открыть логи
+UI -> Deploy: GET /projects/{id}/logs
+Deploy -> Logs: Query Loki по namespace / pod / container
+Logs --> Deploy: entries + labels
+Deploy --> UI: Строки логов + варианты фильтров
+UI --> User: Логи и переход в Grafana
+
+== 5. Фоновые процессы и уведомления ==
+Metrics -> Cluster: Снять usage проекта
+Cluster --> Metrics: CPU / RAM / storage / egress
+Metrics -> Billing: Usage snapshots
+Billing -> DB: Сохранить usage и billing transactions
+Billing -> DB: Обновить summary и лимиты
+
+alt Порог задолженности или системная ошибка
+  Billing -> Telegram: Уведомление пользователю или админу
+  Deploy -> Telegram: Системные alert'ы / deploy notifications
+end
+
+== 6. Возврат данных пользователю ==
+User -> UI: Открыть биллинг / релизы / Telegram
+UI -> Deploy: GET /billing/*, /projects/{id}/releases, /me/telegram
+Deploy -> DB: Прочитать агрегаты и настройки
+DB --> Deploy: Сводка по проекту и пользователю
+Deploy --> UI: Актуальные данные
+UI --> User: Единая консоль управления проектом
+
+@enduml

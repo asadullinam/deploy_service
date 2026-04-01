@@ -1,0 +1,51 @@
+@startuml
+skinparam componentStyle rectangle
+skinparam shadowing false
+
+node "Рабочая станция пользователя" as userNode {
+  artifact "Интерфейс управления в браузере" as browser
+}
+
+cloud "Платформа" as platformCloud {
+  node "Сервис управления платформой" as controlPlane
+  node "Модуль интеграции GitHub" as githubIntegration
+  node "Модуль оркестрации выпусков" as releaseOrchestrator
+  node "Модуль монетизации" as monetization
+  database "Реляционная база данных PostgreSQL" as database
+}
+
+cloud "Внешние системы" as external {
+  node "GitHub" as github
+  node "Реестр контейнерных образов" as registry
+  node "Платежный провайдер" as payment
+}
+
+cloud "Региональный кластер Kubernetes" as k8sHost {
+  node "Пространство имен проекта A" as namespaceA {
+    node "Сервис пользователя A" as serviceA
+  }
+  node "Пространство имен проекта B" as namespaceB {
+    node "Сервис пользователя B" as serviceB
+  }
+  node "Сетевые политики и роли доступа" as policies
+  node "Система метрик" as metrics
+}
+
+browser --> controlPlane : Команды управления проектом
+controlPlane --> database : Состояние проектов и выпусков
+controlPlane --> githubIntegration : Настройка автоматизации
+githubIntegration --> github : Запросы на включение изменений
+github --> registry : Публикация контейнерного образа
+github --> k8sHost : Применение манифестов
+releaseOrchestrator --> controlPlane : Статусы выпуска
+monetization --> metrics : Получение потребления
+monetization --> database : Начисления и лимиты
+monetization --> payment : Проведение оплаты
+controlPlane --> policies : Применение изоляции и ролей доступа
+
+note bottom of k8sHost
+Каждый проект выполняется в собственной изолированной среде.
+Сетевые политики ограничивают межпроектный доступ.
+end note
+
+@enduml

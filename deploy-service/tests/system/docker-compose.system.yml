@@ -1,0 +1,51 @@
+services:
+  k3s:
+    image: ${SYSTEM_K3S_IMAGE:-rancher/k3s:latest}
+    privileged: true
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+    command:
+      - server
+      - --disable=traefik
+      - --disable=servicelb
+      - --write-kubeconfig=/output/kubeconfig.yaml
+      - --write-kubeconfig-mode=644
+      - --tls-san=k3s
+    environment:
+      K3S_KUBECONFIG_OUTPUT: /output/kubeconfig.yaml
+      K3S_KUBECONFIG_MODE: "644"
+    volumes:
+      - k3s-kubeconfig:/output
+      - k3s-data:/var/lib/rancher/k3s
+    healthcheck:
+      test: ["CMD-SHELL", "k3s kubectl get node >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  system-tests:
+    build:
+      context: ${SYSTEM_TEST_REPO_ROOT}/deploy-service/tests/system
+    working_dir: /workspace/deploy-service
+    depends_on:
+      k3s:
+        condition: service_started
+    environment:
+      KUBECONFIG: /shared/kubeconfig.yaml
+      KUBERNETES_PROVISIONER: kubectl
+      KUBECTL_PATH: /usr/local/bin/kubectl
+      VCLUSTER_PATH: /usr/local/bin/vcluster
+      KUBECTL_CONTEXT: default
+      INGRESS_NGINX_AUTO_INSTALL: "false"
+      GATEWAY_CONTROLLER_NAMESPACE: nginx-gateway
+    volumes:
+      - type: bind
+        source: ${SYSTEM_TEST_REPO_ROOT}
+        target: /workspace
+      - k3s-kubeconfig:/shared
+    command: ["/bin/bash", "/workspace/deploy-service/tests/system/run-system-tests.sh"]
+
+volumes:
+  k3s-kubeconfig:
+  k3s-data:

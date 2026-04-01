@@ -1,0 +1,1587 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Deploy Service Console</title>
+    <link rel="stylesheet" href="/ui/styles.css?v=20260328-ui23" />
+  </head>
+  <body>
+    <div class="shell">
+      <button
+        class="theme-toggle-fab theme-toggle-auth"
+        data-theme-toggle
+        type="button"
+        aria-label="Переключить тему"
+        title="Переключить тему"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      </button>
+
+      <section id="authView" class="auth-layout">
+        <div class="auth-hero">
+          <div class="hero-chip">Deploy Service</div>
+          <h1>Деплой в Kubernetes одной кнопкой</h1>
+          <p class="hero-copy">
+            Настрой проект, подключи репозиторий и выпускай релизы — без терминала и без
+            DevOps-экспертизы.
+          </p>
+          <div class="hero-grid">
+            <article class="hero-card">
+              <span>GitHub CI/CD</span>
+              <strong>Деплой прямо из репозитория</strong>
+              <p>
+                Подключи репозиторий — сервис сгенерирует GitHub Actions workflow. Каждый merge
+                выходит новым релизом с историей в интерфейсе.
+              </p>
+            </article>
+            <article class="hero-card">
+              <span>Окружения</span>
+              <strong>Несколько контуров для одного приложения</strong>
+              <p>
+                Создай отдельные контуры test и prod за пару кликов. Каждый контур — изолированный
+                vcluster со своими настройками.
+              </p>
+            </article>
+            <article class="hero-card">
+              <span>Доступ и мониторинг</span>
+              <strong>Внешний URL и Grafana из коробки</strong>
+              <p>
+                Один тоггл — и сервис доступен по публичному адресу. Встроенная Grafana дает метрики
+                без отдельной настройки.
+              </p>
+            </article>
+          </div>
+        </div>
+
+        <section class="auth-panel">
+          <div class="auth-panel-head">
+            <h2>Войти в консоль</h2>
+          </div>
+
+          <div class="auth-toggle">
+            <div class="auth-toggle-slider"></div>
+            <button id="loginTab" class="tab active" type="button">Вход</button>
+            <button id="registerTab" class="tab" type="button">Регистрация</button>
+          </div>
+
+          <form id="authForm" class="stack-form">
+            <label class="field">
+              <span>Email</span>
+              <input
+                id="authEmail"
+                name="email"
+                type="email"
+                placeholder="user@example.com"
+                autocomplete="email"
+                required
+              />
+            </label>
+            <label class="field">
+              <span>Пароль</span>
+              <input
+                id="authPassword"
+                name="password"
+                type="password"
+                placeholder="Придумайте пароль"
+                autocomplete="current-password"
+                required
+              />
+            </label>
+            <label class="field">
+              <span>Telegram username</span>
+              <input
+                id="authTelegramUsername"
+                name="telegramUsername"
+                type="text"
+                placeholder="@username, если хочешь получать алерты"
+                autocomplete="username"
+              />
+            </label>
+            <p class="field-hint auth-field-hint">
+              Поле необязательное. После регистрации появится кнопка подключения к Telegram-боту и
+              короткая инструкция.
+            </p>
+            <button id="authSubmit" class="primary-button" type="submit">Войти</button>
+          </form>
+
+          <div class="auth-footer">
+            <p id="authError" class="error-text hidden"></p>
+          </div>
+        </section>
+      </section>
+
+      <section id="appView" class="app-shell hidden">
+        <main class="workspace">
+          <div class="top-header">
+            <div class="top-nav-brand">DeployService</div>
+            <nav class="top-nav-bar">
+              <div class="top-nav-links">
+                <button id="navDashboard" class="nav-item active" type="button">Главная</button>
+                <button id="navProjects" class="nav-item" type="button">Проекты</button>
+                <button id="navBilling" class="nav-item" type="button">Биллинг</button>
+                <button id="navFlow" class="nav-item" type="button">Флоу</button>
+                <button id="navAbout" class="nav-item" type="button">О нас</button>
+              </div>
+              <div class="top-nav-actions">
+                <button id="dashboardCreateProjectButton" class="primary-button" type="button">
+                  Создать проект
+                </button>
+                <button id="logoutButton" class="ghost-button" type="button">Выйти</button>
+                <button
+                  class="theme-toggle-fab"
+                  data-theme-toggle
+                  type="button"
+                  aria-label="Переключить тему"
+                  title="Переключить тему"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                  </svg>
+                </button>
+              </div>
+            </nav>
+          </div>
+
+          <header id="workspaceHeader" class="workspace-header">
+            <div class="workspace-header-left">
+              <p id="workspaceEyebrow" class="section-kicker">Консоль</p>
+              <div class="workspace-title-row">
+                <h1 id="workspaceTitle">Дашборд</h1>
+                <span id="summaryStatus" class="status-pill neutral hidden"
+                  >Нет выбранного проекта</span
+                >
+              </div>
+              <p id="stageIndicatorChip" class="stage-indicator-chip hidden"></p>
+              <p id="workspaceSubtitle" class="workspace-copy">
+                Быстрый обзор проектов, баланса и текущего состояния платформы.
+              </p>
+            </div>
+            <div class="workspace-actions">
+              <div id="projectHeaderControls" class="project-header-controls hidden">
+                <div class="action-row">
+                  <button id="suspendButton" class="ghost-button" type="button">
+                    Приостановить
+                  </button>
+                  <button id="resumeButton" class="ghost-button" type="button">
+                    Безопасно возобновить
+                  </button>
+                  <button id="deleteButton" class="danger-button" type="button">Удалить</button>
+                </div>
+              </div>
+              <button id="headerSelectProjectButton" class="ghost-button hidden" type="button">
+                Открыть проект
+              </button>
+            </div>
+          </header>
+
+          <section id="dashboardPage" class="page">
+            <div class="stats-grid">
+              <button
+                id="statCardAllProjects"
+                class="stat-card stat-card-button accent"
+                type="button"
+              >
+                <span>Всего проектов</span>
+                <strong id="statProjects">0</strong>
+              </button>
+              <button id="statCardActiveProjects" class="stat-card stat-card-button" type="button">
+                <span>Активные</span>
+                <strong id="statActiveProjects">0</strong>
+              </button>
+              <button
+                id="statCardSuspendedProjects"
+                class="stat-card stat-card-button"
+                type="button"
+              >
+                <span>Приостановленные</span>
+                <strong id="statSuspendedProjects">0</strong>
+              </button>
+            </div>
+
+            <div class="dashboard-grid">
+              <section class="panel">
+                <div class="panel-head compact">
+                  <div>
+                    <h3>Выбранный проект</h3>
+                  </div>
+                </div>
+                <div id="dashboardSpotlight" class="spotlight-card empty-state">
+                  <h4>Проект еще не выбран</h4>
+                  <p>
+                    Выбери проект на странице «Проекты», и здесь появится его сводка, состояние и
+                    быстрые действия.
+                  </p>
+                </div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head compact panel-head-card-aligned">
+                  <div>
+                    <h3>Биллинг</h3>
+                  </div>
+                  <button
+                    id="dashboardBillingPageButton"
+                    class="ghost-button panel-action-button"
+                    type="button"
+                  >
+                    Открыть биллинг
+                  </button>
+                </div>
+                <div class="billing-overview-card">
+                  <div class="billing-line">
+                    <span>Баланс</span>
+                    <strong id="billingBalanceValue">0.00 ₽</strong>
+                  </div>
+                  <div class="billing-line">
+                    <span>Списано за месяц</span>
+                    <strong id="billingSpentValue">0.00 ₽</strong>
+                  </div>
+                  <div class="billing-line">
+                    <span>Доступно</span>
+                    <strong id="billingAvailableValue">0.00 ₽</strong>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section id="projectsPage" class="page hidden">
+            <div class="projects-layout">
+              <section class="panel">
+                <div class="panel-head compact">
+                  <h3>Проекты</h3>
+                  <div class="action-row">
+                    <button id="refreshProjectsButton" class="ghost-button" type="button">
+                      Обновить
+                    </button>
+                    <button id="projectsEditModeButton" class="ghost-button" type="button">
+                      Редактировать
+                    </button>
+                  </div>
+                </div>
+
+                <div id="projectsBrowseBlock">
+                  <label class="field">
+                    <span>Фильтр по имени или ID</span>
+                    <input id="projectSearch" type="text" placeholder="my-service или prj-..." />
+                  </label>
+                  <div id="projectStatusFilterBar" class="project-status-filter hidden">
+                    <span id="projectStatusFilterLabel">Фильтр</span>
+                    <button id="projectStatusFilterClear" class="ghost-button" type="button">
+                      Снять
+                    </button>
+                  </div>
+                  <div id="projectList" class="project-list"></div>
+                  <p id="projectListEmpty" class="muted">Проектов пока нет.</p>
+                </div>
+
+                <div id="projectsBulkEditBlock" class="hidden">
+                  <p id="bulkDeleteSelectionCountRow" class="muted hidden">
+                    Выбрано: <strong id="bulkDeleteSelectionCount">0</strong>
+                  </p>
+                  <div class="action-row">
+                    <button id="bulkDeleteSelectAllButton" class="ghost-button" type="button">
+                      Выбрать все
+                    </button>
+                    <button id="bulkDeleteClearButton" class="ghost-button" type="button">
+                      Снять выбор
+                    </button>
+                    <button id="bulkDeleteDeleteButton" class="danger-button" type="button">
+                      Удалить выбранные
+                    </button>
+                  </div>
+                  <div id="bulkDeleteList" class="bulk-delete-list"></div>
+                  <p id="bulkDeleteEmpty" class="muted">Нет проектов для массового удаления.</p>
+                  <div id="bulkDeleteReport" class="bulk-delete-report hidden"></div>
+                </div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head compact">
+                  <h3>Создать проект</h3>
+                </div>
+                <form id="createProjectForm" class="stack-form">
+                  <label class="field">
+                    <span>Название</span>
+                    <input
+                      id="projectName"
+                      name="name"
+                      type="text"
+                      placeholder="my-service"
+                      autocomplete="off"
+                      required
+                    />
+                  </label>
+                  <button class="primary-button" type="submit">Создать</button>
+                </form>
+              </section>
+            </div>
+          </section>
+
+          <section id="projectPage" class="page hidden">
+            <section id="projectGuardBanner" class="guard-banner hidden">
+              <div>
+                <p class="section-kicker">Пауза</p>
+                <h3 id="projectGuardTitle">Проект остановлен</h3>
+                <p id="projectGuardBody" class="workspace-copy">
+                  Здесь появится причина остановки и безопасный следующий шаг.
+                </p>
+              </div>
+              <div class="action-row">
+                <button id="projectGuardActionButton" class="primary-button" type="button">
+                  Перейти в биллинг
+                </button>
+              </div>
+            </section>
+
+            <div class="project-tabs">
+              <div class="project-tabs-slider"></div>
+              <button id="tabOverview" class="tab-button active" type="button">Обзор</button>
+              <button id="tabStages" class="tab-button" type="button">Контуры</button>
+              <button id="tabDeploy" class="tab-button" type="button">Деплой</button>
+              <button id="tabUrls" class="tab-button" type="button">Адреса</button>
+              <button id="tabRuntime" class="tab-button" type="button">Состояние</button>
+              <button id="tabReleases" class="tab-button" type="button">Релизы</button>
+              <button id="tabLogs" class="tab-button" type="button">Логи</button>
+              <button id="tabAccess" class="tab-button" type="button">Доступ</button>
+            </div>
+
+            <section id="projectTabOverview" class="tab-page">
+              <div class="project-overview-grid">
+                <article class="project-summary-card">
+                  <span class="summary-label">Адреса</span>
+                  <div class="summary-list">
+                    <div id="overviewServiceUrls">
+                      <div class="summary-row">
+                        <span>Сервисы</span>
+                        <div id="projectUrlValue">—</div>
+                      </div>
+                    </div>
+                    <div class="summary-row summary-row-with-note">
+                      <span>Grafana</span>
+                      <div class="summary-value-stack">
+                        <div id="projectGrafanaValue">—</div>
+                        <p class="resource-note">
+                          Метрики проекта: CPU, память, сеть и состояние подов.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              </div>
+
+              <div class="dashboard-grid">
+                <section class="panel">
+                  <div class="panel-head compact panel-head-card-aligned">
+                    <div>
+                      <p class="section-kicker">Состояние</p>
+                      <h3>Текущее состояние в кластере</h3>
+                    </div>
+                    <button
+                      id="overviewRefreshRuntimeButton"
+                      class="ghost-button panel-action-button"
+                      type="button"
+                    >
+                      Получить статус
+                    </button>
+                  </div>
+                  <div id="runtimeSummaryCard" class="runtime-summary-card empty-state">
+                    <h4>Пока нет данных</h4>
+                    <p>
+                      Открой вкладку «Состояние» или нажми обновление, чтобы проверить namespace,
+                      deployment, service, HTTPRoute и поды.
+                    </p>
+                  </div>
+                </section>
+
+                <section class="panel">
+                  <div class="panel-head compact panel-head-card-aligned">
+                    <div>
+                      <p class="section-kicker">Расходы</p>
+                      <h3>Стоимость проекта</h3>
+                    </div>
+                    <button
+                      id="loadCostButton"
+                      class="ghost-button panel-action-button"
+                      type="button"
+                    >
+                      Пересчитать
+                    </button>
+                  </div>
+                  <div class="cost-card">
+                    <strong id="costTotalValue">0.00 ₽</strong>
+                    <div id="costBreakdownValue" class="cost-breakdown muted">
+                      Выберите проект, чтобы загрузить расчет.
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </section>
+
+            <section id="projectTabDeploy" class="tab-page hidden">
+              <div class="dashboard-grid">
+                <section class="panel">
+                  <div class="panel-head compact">
+                    <div>
+                      <p class="section-kicker">Репозиторий</p>
+                      <h3>Подготовка деплоя</h3>
+                    </div>
+                  </div>
+                  <div class="deploy-token-bar">
+                    <p id="projectGitHubTokenStatus" class="muted token-inline-status"></p>
+                    <button
+                      id="openProjectGitHubTokenModalButton"
+                      class="ghost-button token-inline-button"
+                      type="button"
+                    >
+                      Настроить токен
+                    </button>
+                  </div>
+
+                  <form id="githubForm" class="grid-form">
+                    <label class="field wide-field">
+                      <span>Временный токен (разовый)</span>
+                      <div class="password-field">
+                        <input
+                          id="githubToken"
+                          name="githubToken"
+                          type="password"
+                          placeholder="ghp_... или github_pat_..."
+                          autocomplete="off"
+                        />
+                        <button
+                          id="toggleGitHubTokenButton"
+                          class="icon-button"
+                          type="button"
+                          aria-label="Показать токен"
+                          title="Показать токен"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path
+                              d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12Z"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="1.8"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                            ></path>
+                            <circle
+                              cx="12"
+                              cy="12"
+                              r="3.2"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="1.8"
+                            ></circle>
+                          </svg>
+                        </button>
+                      </div>
+                    </label>
+                    <label class="field">
+                      <span>Репозиторий</span>
+                      <input
+                        id="repositoryUrl"
+                        name="repositoryUrl"
+                        type="text"
+                        placeholder="https://github.com/your-org/example-service"
+                        autocomplete="off"
+                      />
+                    </label>
+                    <label class="field">
+                      <span>Ветка</span>
+                      <input id="baseBranch" name="baseBranch" type="text" placeholder="master" />
+                    </label>
+                    <label class="field">
+                      <span>Контур деплоя (stage)</span>
+                      <select id="deployStageSlug" name="deployStageSlug"></select>
+                    </label>
+                    <label class="field">
+                      <span>Имя сервиса</span>
+                      <input id="serviceName" name="serviceName" type="text" placeholder="api" />
+                    </label>
+                    <label class="field">
+                      <span>Dockerfile</span>
+                      <input
+                        id="dockerfilePath"
+                        name="dockerfilePath"
+                        type="text"
+                        placeholder="Dockerfile"
+                      />
+                    </label>
+                    <label class="field">
+                      <span>Тип сервиса</span>
+                      <select id="serviceType" name="serviceType">
+                        <option value="LoadBalancer">Публичный адрес</option>
+                        <option value="ClusterIP">Только внутри платформы</option>
+                      </select>
+                    </label>
+                    <div class="field checkbox-field wide-field">
+                      <span>Выделенный балансер</span>
+                      <label class="checkbox-row" for="dedicatedLoadBalancer">
+                        <input
+                          id="dedicatedLoadBalancer"
+                          name="dedicatedLoadBalancer"
+                          type="checkbox"
+                        />
+                        <span class="checkbox-copy"
+                          >Отдельный LoadBalancer для сервиса вместо общего ingress</span
+                        >
+                      </label>
+                    </div>
+                    <label class="field">
+                      <span>Внешний порт</span>
+                      <input
+                        id="servicePort"
+                        name="servicePort"
+                        type="number"
+                        min="1"
+                        max="65535"
+                        placeholder="80"
+                      />
+                    </label>
+                    <label class="field">
+                      <span>Порт контейнера</span>
+                      <input
+                        id="containerPort"
+                        name="containerPort"
+                        type="number"
+                        min="1"
+                        max="65535"
+                        placeholder="8080"
+                      />
+                    </label>
+                    <label class="field">
+                      <span>Реплики</span>
+                      <select id="replicaCount" name="replicaCount">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="5">5</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Профиль ресурсов</span>
+                      <select id="resourceProfile" name="resourceProfile">
+                        <option value="starter">Starter — 0.25 CPU / 256 MB</option>
+                        <option value="balanced">Balanced — 0.5 CPU / 512 MB</option>
+                        <option value="performance">Performance — 1 CPU / 1 GB</option>
+                      </select>
+                    </label>
+                    <div class="action-row">
+                      <button id="detectGitHubButton" class="ghost-button" type="button">
+                        Определить из репозитория
+                      </button>
+                    </div>
+                    <p class="action-inline-note">
+                      Заполнит имя сервиса, Dockerfile и порты по данным из репозитория.
+                    </p>
+                  </form>
+
+                  <p id="githubMessage" class="muted"></p>
+                </section>
+
+                <section class="panel">
+                  <div class="panel-head compact">
+                    <div>
+                      <p class="section-kicker">Конфигурация</p>
+                      <h3>Итоговая конфигурация</h3>
+                    </div>
+                  </div>
+                  <section id="deployPlanSummary" class="deploy-plan-summary"></section>
+                  <button
+                    id="createPrButton"
+                    class="primary-button"
+                    form="githubForm"
+                    type="submit"
+                    style="width: 100%; margin-top: 14px"
+                  >
+                    Создать PR с деплой-конфигом
+                  </button>
+                </section>
+              </div>
+
+              <div class="dashboard-grid">
+                <section class="panel">
+                  <div class="panel-head compact">
+                    <div>
+                      <p class="section-kicker">С чего начать</p>
+                      <h3>Быстрый старт</h3>
+                    </div>
+                  </div>
+                  <div class="checklist-card">
+                    <div class="check-row">
+                      <strong>1.</strong>
+                      <span>
+                        Перейди во вкладку <strong>Доступ</strong> и нажми
+                        <strong>Получить KUBECONFIG_BASE64</strong>. Скопируй появившуюся строку.
+                      </span>
+                    </div>
+                    <div class="check-row">
+                      <strong>2.</strong>
+                      <span>
+                        Открой репозиторий на GitHub ->
+                        <code>Settings -> Secrets and variables -> Actions</code> -> создай или
+                        обнови секрет с именем <code>KUBECONFIG_BASE64</code> и вставь скопированную
+                        строку.
+                      </span>
+                    </div>
+                    <div class="check-row">
+                      <strong>3.</strong>
+                      <span>
+                        Выпусти GitHub token:
+                        <code>Settings -> Developer settings -> Personal access tokens</code>. Нужны
+                        права <code>Contents: Read and write</code> и
+                        <code>Pull requests: Read and write</code> на репозиторий сервиса.
+                      </span>
+                    </div>
+                    <div class="check-row">
+                      <strong>4.</strong>
+                      <span>
+                        Нажми <strong>Настроить токен</strong> выше и сохрани его — или вставь прямо
+                        в поле «Временный токен» для разового деплоя.
+                      </span>
+                    </div>
+                    <div class="check-row">
+                      <strong>5.</strong>
+                      <span>
+                        Заполни форму, нажми <strong>Создать PR с деплой-конфигом</strong> — PR
+                        появится в репозитории. После мержа GitHub Actions выкатит сервис.
+                      </span>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="panel">
+                  <div class="panel-head compact">
+                    <div>
+                      <p class="section-kicker">Вопросы</p>
+                      <h3>FAQ</h3>
+                    </div>
+                  </div>
+                  <div class="checklist-card">
+                    <div class="check-row">
+                      <strong>Q</strong>
+                      <span>
+                        <strong>Что дает тип сервиса «Публичный адрес»?</strong><br />
+                        Платформа автоматически выдает внешний адрес с HTTPS и настраивает роутинг.
+                        Тип «Только внутри платформы» оставляет сервис недоступным снаружи —
+                        подходит для внутренних API и баз данных.
+                      </span>
+                    </div>
+                    <div class="check-row">
+                      <strong>Q</strong>
+                      <span>
+                        <strong>На что влияет количество реплик?</strong><br />
+                        Каждая дополнительная реплика — это отдельная копия контейнера. Несколько
+                        реплик повышают устойчивость к падениям и позволяют обновлять сервис без
+                        даунтайма, но пропорционально увеличивают стоимость.
+                      </span>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </section>
+
+            <section id="projectTabStages" class="tab-page hidden">
+              <div class="projects-layout">
+                <section class="panel">
+                  <div class="panel-head compact">
+                    <div>
+                      <p class="section-kicker">Контуры</p>
+                      <h3>Контуры проекта</h3>
+                    </div>
+                    <button id="refreshStagesButton" class="ghost-button" type="button">
+                      Обновить
+                    </button>
+                  </div>
+                  <div id="stageList" class="stage-list"></div>
+                  <p id="stageListEmpty" class="muted">
+                    Контуров пока нет. Обычно первым используется production.
+                  </p>
+                </section>
+
+                <section class="panel">
+                  <div class="panel-head compact">
+                    <div>
+                      <p class="section-kicker">Новый</p>
+                      <h3>Создать контур</h3>
+                    </div>
+                  </div>
+                  <form id="createStageForm" class="stack-form">
+                    <label class="field">
+                      <span>Название</span>
+                      <input
+                        id="stageNameInput"
+                        name="name"
+                        type="text"
+                        placeholder="test"
+                        autocomplete="off"
+                        required
+                      />
+                    </label>
+                    <button id="createStageButton" class="primary-button" type="submit">
+                      Создать
+                    </button>
+                  </form>
+                </section>
+              </div>
+            </section>
+
+            <section id="projectTabRuntime" class="tab-page hidden">
+              <div class="dashboard-grid">
+                <section class="panel">
+                  <div class="panel-head compact">
+                    <div>
+                      <p class="section-kicker">Кластер</p>
+                      <h3>Состояние развертывания</h3>
+                    </div>
+                    <button id="runtimeRefreshButton" class="ghost-button" type="button">
+                      Обновить
+                    </button>
+                  </div>
+                  <label class="field stage-picker-field">
+                    <span>Контур</span>
+                    <select id="runtimeStageSelect"></select>
+                  </label>
+                  <div id="runtimeDetailCard" class="runtime-detail-card empty-state">
+                    <h4>Пока нет данных о состоянии</h4>
+                    <p>
+                      Запроси статус, чтобы увидеть namespace, deployment, service, HTTPRoute и
+                      список подов.
+                    </p>
+                  </div>
+                </section>
+
+                <section class="panel">
+                  <div class="panel-head compact">
+                    <div>
+                      <p class="section-kicker">Поды</p>
+                      <h3>Список подов</h3>
+                    </div>
+                  </div>
+                  <div id="runtimePods" class="pod-list"></div>
+                  <p id="runtimePodsEmpty" class="muted">
+                    Поды еще не найдены или деплой не дошел до кластера.
+                  </p>
+                </section>
+              </div>
+            </section>
+
+            <section id="projectTabReleases" class="tab-page hidden">
+              <section class="panel">
+                <div class="panel-head compact">
+                  <div>
+                    <h3>История релизов</h3>
+                  </div>
+                  <button id="refreshReleasesButton" class="ghost-button" type="button">
+                    Обновить
+                  </button>
+                </div>
+
+                <label class="field release-filter-field">
+                  <span>Контур</span>
+                  <select id="releasesStageFilter"></select>
+                </label>
+
+                <div id="releaseList" class="release-list"></div>
+                <p id="releaseEmpty" class="muted">Релизов пока нет.</p>
+              </section>
+            </section>
+
+            <section id="projectTabUrls" class="tab-page hidden">
+              <section class="panel">
+                <div class="panel-head compact">
+                  <div>
+                    <p class="section-kicker">Публичные адреса</p>
+                    <h3>Адреса сервисов по контурам</h3>
+                  </div>
+                  <button id="refreshUrlsButton" class="ghost-button" type="button">
+                    Обновить
+                  </button>
+                </div>
+                <div id="urlsContent">
+                  <p class="muted">Загрузка...</p>
+                </div>
+              </section>
+            </section>
+
+            <section id="projectTabLogs" class="tab-page hidden">
+              <div class="dashboard-grid">
+                <section id="logsPanel" class="panel">
+                  <div class="panel-head compact logs-panel-head">
+                    <div>
+                      <p class="section-kicker">Логи</p>
+                      <h3>Журнал сервиса</h3>
+                    </div>
+                    <div class="action-row logs-action-row">
+                      <button id="logsFullscreenButton" class="ghost-button" type="button">
+                        На весь экран
+                      </button>
+                      <button id="logsOpenGrafanaButton" class="ghost-button" type="button">
+                        Открыть Grafana
+                      </button>
+                      <button id="logsRefreshButton" class="ghost-button" type="button">
+                        Обновить
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="logs-toolbar">
+                    <label class="field">
+                      <span>Контур</span>
+                      <select id="logsStageSelect"></select>
+                    </label>
+                    <label class="field">
+                      <span>Период</span>
+                      <select id="logsSinceSelect">
+                        <option value="15m">Последние 15 минут</option>
+                        <option value="1h">Последний час</option>
+                        <option value="6h">Последние 6 часов</option>
+                        <option value="24h">Последние 24 часа</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Уровень</span>
+                      <select id="logsLevelSelect">
+                        <option value="">Все</option>
+                        <option value="error">Ошибки</option>
+                        <option value="warn">Предупреждения</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Pod</span>
+                      <select id="logsPodInput">
+                        <option value="">Все pod'ы</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Container</span>
+                      <select id="logsContainerInput">
+                        <option value="">Все container'ы</option>
+                      </select>
+                    </label>
+                    <label class="field logs-search-field">
+                      <span>Поиск</span>
+                      <input
+                        id="logsSearchInput"
+                        type="text"
+                        placeholder="error, timeout, failed"
+                        autocomplete="off"
+                      />
+                    </label>
+                  </div>
+                  <p class="muted logs-toolbar-note">
+                    Для Pod и container доступны выпадающие списки: можно оставить режим «Все» или
+                    выбрать конкретные найденные имена.
+                  </p>
+
+                  <p id="logsSummary" class="muted">Логи еще не загружены.</p>
+                  <div id="logsViewerShell" class="logs-viewer-shell">
+                    <div id="logsViewer" class="logs-viewer"></div>
+                  </div>
+                  <p id="logsEmpty" class="muted">
+                    Здесь появится журнал по выбранному проекту. Нажми «Обновить», чтобы загрузить
+                    данные.
+                  </p>
+                </section>
+              </div>
+            </section>
+
+            <section id="projectTabAccess" class="tab-page hidden">
+              <div class="dashboard-grid">
+                <section class="panel">
+                  <div class="panel-head compact">
+                    <div>
+                      <p class="section-kicker">Доступ</p>
+                      <h3>Kubeconfig и доступ</h3>
+                    </div>
+                  </div>
+                  <div class="checklist-card">
+                    <div class="check-row access-row">
+                      <strong>ID</strong><span id="accessProjectId">—</span>
+                    </div>
+                    <div class="project-setup-warning access-kubeconfig-note" role="note">
+                      <p>
+                        <strong
+                          >Для деплоя в GitHub Actions нужен kubeconfig именно этого проекта</strong
+                        >
+                      </p>
+                      <p class="muted">
+                        Если в логе написано, что
+                        <code>KUBECONFIG указывает на host cluster</code>, значит в репозитории
+                        сохранен не тот secret.
+                      </p>
+                      <p class="muted">
+                        Возьми здесь <code>KUBECONFIG_BASE64</code> и обнови им GitHub Secret
+                        проекта.
+                      </p>
+                    </div>
+                    <div class="access-actions">
+                      <button id="downloadKubeconfigButton" class="ghost-button" type="button">
+                        Скачать kubeconfig
+                      </button>
+                      <button id="copyKubeconfigBase64Button" class="ghost-button" type="button">
+                        Получить KUBECONFIG_BASE64
+                      </button>
+                      <button id="rotateKubeconfigButton" class="ghost-button" type="button">
+                        Перевыпустить kubeconfig
+                      </button>
+                    </div>
+                    <div
+                      id="kubeconfigBase64Block"
+                      class="project-setup-warning hidden"
+                      role="note"
+                    >
+                      <p><strong>Готовое значение для GitHub Secret</strong></p>
+                      <p class="muted">
+                        Скопируй эту строку целиком и вставь ее в
+                        <code
+                          >Settings -> Secrets and variables -> Actions -> KUBECONFIG_BASE64</code
+                        >
+                        в репозитории сервиса.
+                      </p>
+                      <textarea
+                        id="kubeconfigBase64Value"
+                        class="kubeconfig-base64-value"
+                        readonly
+                        spellcheck="false"
+                      ></textarea>
+                      <div class="action-row">
+                        <button
+                          id="copyVisibleKubeconfigBase64Button"
+                          class="ghost-button"
+                          type="button"
+                        >
+                          Скопировать значение
+                        </button>
+                      </div>
+                    </div>
+                    <p id="kubeconfigMessage" class="muted"></p>
+                  </div>
+                </section>
+
+                <section class="panel access-diagnostics-panel">
+                  <div class="panel-head compact">
+                    <div>
+                      <p class="section-kicker">Диагностика</p>
+                      <h3>Что делать если не работает</h3>
+                    </div>
+                  </div>
+                  <div class="checklist-card">
+                    <div class="check-row">
+                      <strong>1.</strong>
+                      <span>
+                        Открой вкладку <strong>Состояние</strong> — там видно namespace, deployment
+                        и поды. GitHub Actions может показывать success, пока сервис еще не
+                        поднялся.
+                      </span>
+                    </div>
+                    <div class="check-row">
+                      <strong>2.</strong>
+                      <span>
+                        Поды есть, но <code>Ready = 0</code> — проблема внутри контейнера: неверный
+                        порт, упавший процесс или не проходит readiness-проверка.
+                      </span>
+                    </div>
+                    <div class="check-row">
+                      <strong>3.</strong>
+                      <span>
+                        Подов нет вообще — скорее всего workflow применил манифесты не в тот
+                        кластер. Проверь, что <code>KUBECONFIG_BASE64</code> в GitHub Secrets взят
+                        именно отсюда, из этого проекта.
+                      </span>
+                    </div>
+                    <div class="check-row">
+                      <strong>4.</strong>
+                      <span>
+                        Скачай kubeconfig и проверь вручную:<br />
+                        <code
+                          >kubectl --kubeconfig ./kubeconfig.yaml get deploy,pods -n
+                          production</code
+                        >
+                      </span>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </section>
+          </section>
+
+          <section id="billingPage" class="page hidden">
+            <div class="dashboard-grid billing-layout">
+              <section class="panel billing-panel billing-summary-panel">
+                <div class="panel-head compact billing-panel-head">
+                  <div>
+                    <p class="section-kicker">Биллинг</p>
+                    <h3>Баланс и доступный остаток</h3>
+                  </div>
+                  <form id="billingTopUpForm" class="top-up-form">
+                    <div class="top-up-presets">
+                      <button type="button" class="top-up-preset-btn" data-amount="100">100 ₽</button>
+                      <button type="button" class="top-up-preset-btn" data-amount="500">500 ₽</button>
+                      <button type="button" class="top-up-preset-btn" data-amount="1000">1 000 ₽</button>
+                      <button type="button" class="top-up-preset-btn" data-amount="5000">5 000 ₽</button>
+                    </div>
+                    <div class="top-up-custom-row">
+                      <input
+                        id="billingTopUpAmount"
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="Сумма, ₽"
+                        class="top-up-amount-input"
+                      />
+                      <button id="billingTopUpButton" class="primary-button" type="submit">
+                        Пополнить
+                      </button>
+                    </div>
+                  </form>
+                </div>
+                <div class="stats-grid billing-grid">
+                  <article class="stat-card accent">
+                    <span>Баланс</span>
+                    <strong id="billingPageBalance">0.00 ₽</strong>
+                    <p>Текущий баланс аккаунта до учета уже начисленных расходов.</p>
+                  </article>
+                  <article class="stat-card">
+                    <span>Списано за месяц</span>
+                    <strong id="billingPageSpent">0.00 ₽</strong>
+                    <p>Начисления по проектам за текущий месяц.</p>
+                  </article>
+                  <article class="stat-card">
+                    <span>Доступно</span>
+                    <strong id="billingPageAvailable">0.00 ₽</strong>
+                    <p>Эта сумма проверяется перед созданием нового PR.</p>
+                  </article>
+                </div>
+              </section>
+
+              <section class="panel billing-panel billing-telegram-panel">
+                <div class="panel-head compact billing-panel-head">
+                  <div>
+                    <p class="section-kicker">Telegram</p>
+                    <h3>Оповещения по проектам и биллингу</h3>
+                  </div>
+                </div>
+                <form id="telegramSettingsForm" class="grid-form">
+                  <label class="field wide-field">
+                    <span>Telegram username</span>
+                    <input
+                      id="telegramUsernameInput"
+                      type="text"
+                      placeholder="@username"
+                      autocomplete="username"
+                    />
+                  </label>
+                  <label class="field checkbox-field telegram-toggle-field wide-field">
+                    <span class="telegram-toggle-row">
+                      <input id="telegramNotificationsEnabled" type="checkbox" checked />
+                      <span class="telegram-toggle-control" aria-hidden="true"></span>
+                      <span class="telegram-toggle-copy"> Получать уведомления в Telegram </span>
+                    </span>
+                  </label>
+                  <div class="action-row">
+                    <button id="telegramSaveButton" class="primary-button" type="submit">
+                      Сохранить
+                    </button>
+                    <button id="telegramDisconnectButton" class="ghost-button" type="button">
+                      Очистить
+                    </button>
+                  </div>
+                </form>
+                <div id="telegramStatusCard" class="checklist-card telegram-card">
+                  <div class="check-row">
+                    <strong>1.</strong>
+                    <span>Укажи свой Telegram username и сохрани настройки.</span>
+                  </div>
+                  <div class="check-row">
+                    <strong>2.</strong>
+                    <span>Открой бота и отправь команду привязки.</span>
+                  </div>
+                  <div class="check-row">
+                    <strong>3.</strong>
+                    <span>После этого платформа сможет присылать предупреждения и ошибки.</span>
+                  </div>
+                </div>
+                <div class="action-row" style="margin-top: 18px">
+                  <a
+                    id="telegramBotLink"
+                    class="primary-button"
+                    href="#"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >Открыть Telegram-бота</a
+                  >
+                  <button id="telegramCopyCodeButton" class="ghost-button" type="button">
+                    Скопировать /start код
+                  </button>
+                </div>
+                <p id="telegramStatusNote" class="workspace-copy" style="margin-top: 14px">
+                  Бот пока не подключен.
+                </p>
+              </section>
+            </div>
+          </section>
+          <section id="flowPage" class="page hidden">
+            <div class="dashboard-grid">
+              <section class="panel">
+                <div class="panel-head compact">
+                  <div>
+                    <p class="section-kicker">Как это устроено</p>
+                    <h3>Флоу деплоя</h3>
+                  </div>
+                </div>
+                <p class="workspace-copy">
+                  Вся конфигурация задается один раз через интерфейс — имя сервиса, порты,
+                  Dockerfile, контур, профиль ресурсов. На основе этих данных платформа подставляет
+                  значения в готовые шаблоны манифестов и генерирует GitHub Actions workflow. PR
+                  создается автоматически — тебе остается его смержить.
+                </p>
+                <div class="checklist-card" style="margin-top: 16px">
+                  <div class="check-row">
+                    <strong>1.</strong>
+                    <span>
+                      <strong>Заполняешь форму</strong> — репозиторий, ветка, имя сервиса, порты,
+                      тип доступа, количество реплик, профиль ресурсов.
+                    </span>
+                  </div>
+                  <div class="check-row">
+                    <strong>2.</strong>
+                    <span>
+                      <strong>Платформа собирает конфиг</strong> — значения подставляются в
+                      заготовленные Kubernetes-манифесты: Deployment, Service, HTTPRoute.
+                      Генерируется GitHub Actions workflow с шагами сборки и деплоя.
+                    </span>
+                  </div>
+                  <div class="check-row">
+                    <strong>3.</strong>
+                    <span>
+                      <strong>Создается PR</strong> — в репозитории появляется ветка с манифестами и
+                      workflow. После мержа Actions собирает образ, пушит в registry и применяет
+                      манифесты в vcluster проекта.
+                    </span>
+                  </div>
+                  <div class="check-row">
+                    <strong>4.</strong>
+                    <span>
+                      <strong>Сервис живет в изолированном кластере</strong> — каждый проект
+                      получает собственный vcluster с отдельным namespace, сетевыми политиками и
+                      kubeconfig. Контуры (production, test, staging) разделены внутри проекта.
+                    </span>
+                  </div>
+                </div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head compact">
+                  <div>
+                    <p class="section-kicker">Что конфигурируется</p>
+                    <h3>Разделы и манифесты</h3>
+                  </div>
+                </div>
+                <p class="workspace-copy">
+                  Каждый раздел интерфейса отвечает за конкретную часть манифестов. Значения из форм
+                  подставляются напрямую в шаблоны — ничего не нужно писать руками. Ниже — что
+                  именно и куда попадает.
+                </p>
+                <div class="checklist-card" style="margin-top: 16px">
+                  <div class="check-row">
+                    <strong>&gt;</strong>
+                    <span>
+                      <strong>Деплой</strong> — здесь задается все, что попадет в манифесты: имя
+                      сервиса становится именем Deployment и Service, порты прописываются в
+                      containerPort и ServicePort, реплики — в spec.replicas, профиль ресурсов — в
+                      resources.requests и limits.
+                    </span>
+                  </div>
+                  <div class="check-row">
+                    <strong>&gt;</strong>
+                    <span>
+                      <strong>Контуры</strong> — каждый контур (production, test и др.) деплоится в
+                      отдельный namespace внутри vcluster. Один проект может иметь несколько
+                      независимых окружений с разными версиями сервиса.
+                    </span>
+                  </div>
+                  <div class="check-row">
+                    <strong>&gt;</strong>
+                    <span>
+                      <strong>Доступ</strong> — kubeconfig выдается на уровне vcluster проекта, не
+                      host-кластера. Именно его нужно сохранить в GitHub Secret
+                      <code>KUBECONFIG_BASE64</code> — workflow использует его для применения
+                      манифестов.
+                    </span>
+                  </div>
+                  <div class="check-row">
+                    <strong>&gt;</strong>
+                    <span>
+                      <strong>Публичный адрес</strong> — если выбран тип «Публичный адрес»,
+                      платформа создает HTTPRoute и привязывает внешний домен. Адрес появляется в
+                      разделе «Обзор» после первого деплоя.
+                    </span>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section id="aboutPage" class="page hidden">
+            <div class="dashboard-grid">
+              <section class="panel">
+                <div class="panel-head compact">
+                  <div>
+                    <p class="section-kicker">Команда</p>
+                    <h3>О нас</h3>
+                  </div>
+                </div>
+                <p class="workspace-copy">
+                  Мы — команда студентов ВШЭ, которая строит платформу для деплоя в рамках учебного
+                  проекта. Устали объяснять одногруппникам как поднять сервис в Kubernetes — решили
+                  автоматизировать это раз и навсегда.
+                </p>
+                <div class="checklist-card" style="margin-top: 16px">
+                  <div class="check-row">
+                    <strong>&gt;</strong>
+                    <span>Пишем на Go — весь бекенд без внешних зависимостей</span>
+                  </div>
+                  <div class="check-row">
+                    <strong>&gt;</strong>
+                    <span>Используем vcluster для изоляции — каждый проект в своем кластере</span>
+                  </div>
+                  <div class="check-row">
+                    <strong>&gt;</strong>
+                    <span>CI/CD через GitHub Actions — инфраструктура живет в репозитории</span>
+                  </div>
+                  <div class="check-row">
+                    <strong>&gt;</strong>
+                    <span
+                      >Gateway API вместо Ingress — современный стандарт роутинга в Kubernetes</span
+                    >
+                  </div>
+                </div>
+              </section>
+
+              <section class="panel contact-panel">
+                <div class="panel-head compact">
+                  <div>
+                    <p class="section-kicker">Контакт</p>
+                    <h3>Связаться с нами</h3>
+                  </div>
+                </div>
+                <p class="workspace-copy">
+                  Если что-то не работает, нашли баг или хочешь предложить фичу — пиши. Отвечаем
+                  быстро.
+                </p>
+                <div class="contact-panel-actions">
+                  <a
+                    href="https://t.me/lisa_helper"
+                    id="telegramContactLink"
+                    class="primary-button"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >Написать в Telegram</a
+                  >
+                </div>
+              </section>
+            </div>
+          </section>
+        </main>
+      </section>
+
+      <div id="toast" class="toast hidden"></div>
+
+      <div id="projectSetupModal" class="modal-overlay hidden" aria-hidden="true">
+        <div
+          class="modal-dialog wide"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="projectSetupTitle"
+          aria-describedby="projectSetupBody"
+        >
+          <div class="modal-head">
+            <div>
+              <p class="section-kicker">Первичная настройка</p>
+              <h3 id="projectSetupTitle">Данные проекта для деплоя</h3>
+            </div>
+            <button
+              id="projectSetupModalClose"
+              class="icon-button modal-close"
+              type="button"
+              aria-label="Закрыть окно"
+              title="Закрыть окно"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M6 6l12 12M18 6 6 18"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                ></path>
+              </svg>
+            </button>
+          </div>
+          <p id="projectSetupBody" class="workspace-copy">
+            Эти данные сохраняются как постоянные настройки проекта. GitHub токен задается отдельно
+            кнопкой «Настроить токен» на вкладке «Деплой».
+          </p>
+
+          <form id="projectSetupForm" class="grid-form project-setup-form">
+            <label class="field wide-field">
+              <span>Ссылка на репозиторий GitHub</span>
+              <input
+                id="projectSetupRepositoryUrl"
+                name="projectSetupRepositoryUrl"
+                type="text"
+                placeholder="https://github.com/your-org/example-service"
+                autocomplete="off"
+                required
+              />
+              <small class="field-hint"
+                >Поддерживаются форматы `https://github.com/org/repo`, `git@github.com:org/repo.git`
+                и `org/repo`.</small
+              >
+            </label>
+
+            <label class="field">
+              <span>Основная ветка</span>
+              <input
+                id="projectSetupBaseBranch"
+                name="projectSetupBaseBranch"
+                type="text"
+                placeholder="master"
+                autocomplete="off"
+                required
+              />
+            </label>
+
+            <div class="project-setup-warning wide-field" role="note">
+              <p><strong>Что нужно сделать перед первым PR</strong></p>
+              <ol class="token-help-list">
+                <li>
+                  Открой этот проект во вкладке <code>Доступ</code> и получи kubeconfig именно этого
+                  проекта.
+                </li>
+                <li>
+                  Если кнопка копирования недоступна, скачай kubeconfig файлом и сохрани его
+                  локально, например как <code>demo-kubeconfig.yaml</code>.
+                </li>
+                <li>
+                  Преобразуй содержимое файла в одну строку base64 без переносов: это и будет
+                  значение для GitHub Secret <code>KUBECONFIG_BASE64</code>.
+                </li>
+                <li>
+                  Открой репозиторий на GitHub:
+                  <code>Settings -> Secrets and variables -> Actions</code> и создай или обнови
+                  secret <code>KUBECONFIG_BASE64</code>.
+                </li>
+                <li>
+                  Используй kubeconfig только этого проекта. Kubeconfig host-кластера или другого
+                  проекта workflow отклонит.
+                </li>
+              </ol>
+              <p class="muted">Команда для Linux:</p>
+              <pre><code>base64 -w 0 ./&lt;project-id&gt;-kubeconfig.yaml</code></pre>
+              <p class="muted">Команда для macOS:</p>
+              <pre><code>base64 &lt; ./&lt;project-id&gt;-kubeconfig.yaml | tr -d '\n'</code></pre>
+              <p class="muted">
+                После обновления секрета можно создавать PR или перезапустить упавший workflow в
+                репозитории.
+              </p>
+            </div>
+
+            <p id="projectSetupStatusText" class="muted wide-field"></p>
+
+            <div class="modal-actions wide-field">
+              <button id="projectSetupLaterButton" class="ghost-button" type="button">
+                Настроить позже
+              </button>
+              <button id="projectSetupSaveButton" class="primary-button" type="submit">
+                Сохранить настройки
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div id="projectGitHubTokenModal" class="modal-overlay hidden" aria-hidden="true">
+        <div
+          class="modal-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="projectGitHubTokenModalTitle"
+          aria-describedby="projectGitHubTokenModalBody"
+        >
+          <div class="modal-head">
+            <div>
+              <p class="section-kicker">Интеграция</p>
+              <h3 id="projectGitHubTokenModalTitle">GitHub токен проекта</h3>
+            </div>
+            <button
+              id="projectGitHubTokenModalClose"
+              class="icon-button modal-close"
+              type="button"
+              aria-label="Закрыть окно"
+              title="Закрыть окно"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M6 6l12 12M18 6 6 18"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                ></path>
+              </svg>
+            </button>
+          </div>
+          <p id="projectGitHubTokenModalBody" class="workspace-copy">
+            Сохраненный токен используется по умолчанию для автодетекта и создания PR в этом
+            проекте.
+          </p>
+
+          <div class="project-setup-warning" role="note">
+            <p><strong>Как получить GitHub token</strong></p>
+            <ol class="token-help-list">
+              <li>
+                Открой GitHub:
+                <code>Settings -> Developer settings -> Personal access tokens</code>.
+              </li>
+              <li>Создай Fine-grained token и выбери нужный репозиторий.</li>
+              <li>
+                Выдай права <code>Contents: Read and write</code> и
+                <code>Pull requests: Read and write</code>.
+              </li>
+            </ol>
+            <p class="muted">
+              Быстрая ссылка:
+              <a
+                href="https://github.com/settings/personal-access-tokens/new"
+                target="_blank"
+                rel="noreferrer"
+                >github.com/settings/personal-access-tokens/new</a
+              >
+            </p>
+          </div>
+
+          <label class="field">
+            <span>GitHub token</span>
+            <div class="password-field">
+              <input
+                type="password"
+                id="projectGitHubTokenInput"
+                placeholder="ghp_... или github_pat_..."
+                autocomplete="off"
+              />
+              <button
+                id="toggleProjectGitHubTokenButton"
+                class="icon-button"
+                type="button"
+                aria-label="Показать токен"
+                title="Показать токен"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M1.5 12s3.8-6.5 10.5-6.5S22.5 12 22.5 12 18.7 18.5 12 18.5 1.5 12 1.5 12Z"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  ></path>
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="3.2"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                  ></circle>
+                </svg>
+              </button>
+            </div>
+          </label>
+
+          <div class="modal-actions">
+            <button
+              id="deleteProjectGitHubTokenButton"
+              class="ghost-button danger hidden"
+              type="button"
+            >
+              Удалить токен
+            </button>
+            <button id="saveProjectGitHubTokenButton" class="primary-button" type="button">
+              Сохранить токен
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="confirmModal" class="modal-overlay hidden" aria-hidden="true">
+        <div
+          class="modal-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirmModalTitle"
+          aria-describedby="confirmModalBody"
+        >
+          <div class="modal-head">
+            <div>
+              <p class="section-kicker">Подтверждение</p>
+              <h3 id="confirmModalTitle">Подтвердите действие</h3>
+            </div>
+            <button
+              id="confirmModalClose"
+              class="icon-button modal-close"
+              type="button"
+              aria-label="Закрыть окно"
+              title="Закрыть окно"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M6 6l12 12M18 6 6 18"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                ></path>
+              </svg>
+            </button>
+          </div>
+          <p id="confirmModalBody" class="workspace-copy">Здесь появится описание действия.</p>
+          <div class="modal-actions">
+            <button id="confirmModalCancel" class="ghost-button" type="button">Отмена</button>
+            <button id="confirmModalSubmit" class="primary-button" type="button">
+              Подтвердить
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/ui/app-enhanced.js?v=20260328-ui23"></script>
+    <script src="/ui/app.js?v=20260328-ui23" defer></script>
+  </body>
+</html>

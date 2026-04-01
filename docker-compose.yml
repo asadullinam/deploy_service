@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: deploy
+      POSTGRES_PASSWORD: deploy
+      POSTGRES_DB: deploy_service
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deploy -d deploy_service"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  deploy-service:
+    build:
+      context: ./deploy-service
+    ports:
+      - "8080:8080"
+    environment:
+      HTTP_ADDRESS: ":8080"
+      DATABASE_URL: "postgres://deploy:deploy@postgres:5432/deploy_service"
+      JWT_SECRET: "${JWT_SECRET:-dev-secret-change-in-production}"
+      ENCRYPTION_KEY: "${ENCRYPTION_KEY:-}"
+      GITHUB_WEBHOOK_SECRET: "${GITHUB_WEBHOOK_SECRET:-}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      GITHUB_AUTOMATION_MODE: "${GITHUB_AUTOMATION_MODE:-}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      TELEGRAM_BOT_USERNAME: "${TELEGRAM_BOT_USERNAME:-}"
+      TELEGRAM_WEBHOOK_SECRET: "${TELEGRAM_WEBHOOK_SECRET:-}"
+      APPS_BASE_DOMAIN: "${APPS_BASE_DOMAIN:-}"
+      APPS_PUBLIC_SCHEME: "${APPS_PUBLIC_SCHEME:-https}"
+      APPS_PUBLIC_PORT: "${APPS_PUBLIC_PORT:-}"
+      PUBLIC_URL: "${PUBLIC_URL:-}"
+      KUBERNETES_PROVISIONER: "${KUBERNETES_PROVISIONER:-mock}"
+      KUBECTL_CONTEXT: "${KUBECTL_CONTEXT:-}"
+      KUBECTL_PATH: "${KUBECTL_PATH:-/usr/local/bin/kubectl}"
+      VCLUSTER_PATH: "${VCLUSTER_PATH:-/usr/local/bin/vcluster}"
+      GATEWAY_CONTROLLER_NAMESPACE: "${GATEWAY_CONTROLLER_NAMESPACE:-nginx-gateway}"
+      KUBECONFIG: "/root/.kube/deploy-service.yaml"
+    volumes:
+      - "${HOME}/.kube:/root/.kube:ro"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  postgres_data:

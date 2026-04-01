@@ -1,0 +1,499 @@
+openapi: 3.0.3
+info:
+  title: Deploy Service API
+  version: 0.1.0
+  description: |
+    Программный интерфейс сервиса управления проектами развертывания.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+paths:
+  /auth/register:
+    post:
+      summary: Регистрация нового пользователя
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRequest"
+      responses:
+        "201":
+          description: Пользователь зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Пользователь уже существует
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/login:
+    post:
+      summary: Вход и получение JWT токена
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRequest"
+      responses:
+        "200":
+          description: Успешная аутентификация
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /health:
+    get:
+      summary: Проверка доступности сервиса
+      security: []
+      responses:
+        "200":
+          description: Сервис доступен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+  /projects:
+    get:
+      summary: Получить список проектов
+      responses:
+        "200":
+          description: Список проектов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+    post:
+      summary: Создать проект
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "201":
+          description: Проект создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{projectId}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Получить проект по идентификатору
+      responses:
+        "200":
+          description: Проект найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Проект не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Удалить проект
+      responses:
+        "200":
+          description: Проект помечен как удаленный и среда удаляется
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: deleted
+        "404":
+          description: Проект не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{projectId}/cost:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Получить стоимость проекта
+      responses:
+        "200":
+          description: Расчет стоимости проекта
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostBreakdown"
+        "404":
+          description: Проект не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{projectId}/kubeconfig:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Получить kubeconfig для подключения к vcluster проекта
+      responses:
+        "200":
+          description: kubeconfig в формате YAML
+          content:
+            application/yaml:
+              schema:
+                type: string
+        "404":
+          description: Проект не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{projectId}/kubeconfig/rotate:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Перевыпустить kubeconfig проекта
+      responses:
+        "200":
+          description: Новый kubeconfig в формате YAML
+          content:
+            application/yaml:
+              schema:
+                type: string
+        "404":
+          description: Проект не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{projectId}/github/bootstrap:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Настроить GitHub workflow и Kubernetes manifests
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BootstrapGitHubFlowRequest"
+      responses:
+        "200":
+          description: Настройка выполнена, Pull Request создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BootstrapGitHubFlowResponse"
+        "400":
+          description: Ошибка запроса или интеграции
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Проект не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{projectId}/github/questions:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Получить вопросы и автоопределенные значения для bootstrap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GitHubBootstrapQuestionsRequest"
+      responses:
+        "200":
+          description: Подсказки и вопросы для пользователя
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubBootstrapQuestionsResponse"
+        "400":
+          description: Ошибка запроса или интеграции
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Проект не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AuthRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          example: user@example.com
+        password:
+          type: string
+          example: admin123
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+    CreateProjectRequest:
+      type: object
+      required:
+        - name
+        - ownerId
+      properties:
+        name:
+          type: string
+          example: service-a
+        ownerId:
+          type: string
+          example: user-1
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          example: prj-1772500000000000000
+        name:
+          type: string
+          example: service-a
+        ownerId:
+          type: string
+          example: user-1
+        status:
+          type: string
+          enum: [creating, failed, active, suspended, deleting, deleted]
+          example: active
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CostBreakdown:
+      type: object
+      properties:
+        projectId:
+          type: string
+        processorCoreHours:
+          type: number
+          format: double
+        memoryGigabyteHours:
+          type: number
+          format: double
+        persistentStorageGigabytes:
+          type: number
+          format: double
+        outgoingTrafficGigabytes:
+          type: number
+          format: double
+        total:
+          type: number
+          format: double
+        currency:
+          type: string
+          example: USD
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+    BootstrapGitHubFlowRequest:
+      type: object
+      required:
+        - repositoryOwner
+        - repositoryName
+        - serviceName
+      properties:
+        repositoryOwner:
+          type: string
+          example: octocat
+        repositoryName:
+          type: string
+          example: demo-service
+        baseBranch:
+          type: string
+          example: main
+        serviceName:
+          type: string
+          example: api
+        dockerfilePath:
+          type: string
+          example: docker/api/Dockerfile
+        servicePort:
+          type: integer
+          example: 80
+        containerPort:
+          type: integer
+          example: 8080
+        serviceType:
+          type: string
+          enum: [LoadBalancer, ClusterIP]
+          example: LoadBalancer
+        dedicatedLoadBalancer:
+          type: boolean
+          description: Использовать выделенный внешний LoadBalancer
+          example: false
+        replicaCount:
+          type: integer
+          example: 2
+        resourceProfile:
+          type: string
+          enum: [starter, balanced, performance]
+          example: balanced
+        githubToken:
+          type: string
+          description: GitHub token с правами на чтение/запись содержимого, workflow и pull requests
+          example: github_pat_xxxxxxxxxxxx
+    BootstrapGitHubFlowResponse:
+      type: object
+      properties:
+        projectId:
+          type: string
+        repositoryOwner:
+          type: string
+        repositoryName:
+          type: string
+        branchName:
+          type: string
+        pullRequestUrl:
+          type: string
+    GitHubBootstrapQuestionsRequest:
+      type: object
+      required:
+        - repositoryOwner
+        - repositoryName
+      properties:
+        repositoryOwner:
+          type: string
+          example: octocat
+        repositoryName:
+          type: string
+          example: demo-service
+        baseBranch:
+          type: string
+          example: main
+        dockerfilePath:
+          type: string
+          example: Dockerfile
+        serviceName:
+          type: string
+          example: api
+        githubToken:
+          type: string
+          description: GitHub token с правами на чтение репозитория
+          example: github_pat_xxxxxxxxxxxx
+    GitHubBootstrapQuestion:
+      type: object
+      properties:
+        key:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        required:
+          type: boolean
+        defaultValue:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+    GitHubBootstrapQuestionsResponse:
+      type: object
+      properties:
+        repositoryOwner:
+          type: string
+        repositoryName:
+          type: string
+        baseBranch:
+          type: string
+        detectedDockerfile:
+          type: string
+        detectedServiceName:
+          type: string
+        detectedContainerPort:
+          type: integer
+        detectedServicePort:
+          type: integer
+        detectedServiceType:
+          type: string
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitHubBootstrapQuestion"

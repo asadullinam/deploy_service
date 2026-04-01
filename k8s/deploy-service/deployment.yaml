@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: deploy-service
+  template:
+    metadata:
+      labels:
+        app: deploy-service
+    spec:
+      serviceAccountName: deploy-service
+      nodeSelector:
+        dedicated: deploy-service
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: deploy-service
+          effect: NoSchedule
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - until nc -z deploy-service-postgres 5432; do echo "waiting for postgres"; sleep 2; done
+      containers:
+        - name: deploy-service
+          image: IMAGE_PLACEHOLDER
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: deploy-service-env
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            failureThreshold: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15

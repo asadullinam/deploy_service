@@ -1,0 +1,22 @@
+@startuml
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_LEFT_RIGHT()
+
+Person(user, "Пользователь", "Разработчик или команда, публикующие свои сервисы")
+System(platform, "Платформа развертывания", "Создает проект, изолирует среду, автоматизирует сборку и развертывание")
+System_Ext(github, "GitHub", "Репозиторий исходного кода и автоматизация сборки")
+System_Ext(containerRegistry, "Реестр контейнерных образов", "Хранит контейнерные образы")
+System_Ext(kubernetesHost, "Кластер Kubernetes", "Исполняет сервисы пользователей")
+System_Ext(domainNameSystem, "Система доменных имен", "Разрешение доменных имен для доступа к сервисам")
+System_Ext(paymentProvider, "Платежный провайдер", "Проведение платежей и выставление счетов")
+
+Rel(user, platform, "Создает проект, управляет сервисами, получает отчеты по стоимости")
+Rel(platform, github, "Подключает репозиторий, создает процессы автоматизации")
+Rel(github, containerRegistry, "Публикует контейнерные образы")
+Rel(platform, kubernetesHost, "Создает изолированную среду, применяет манифесты")
+Rel(platform, domainNameSystem, "Настраивает маршрутизацию и доменные записи")
+Rel(platform, paymentProvider, "Передает счет и инициирует оплату")
+
+SHOW_LEGEND()
+@enduml

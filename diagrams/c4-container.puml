@@ -1,0 +1,41 @@
+@startuml
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_TOP_DOWN()
+
+Person(user, "Пользователь", "Владелец проекта")
+System_Boundary(platform, "Платформа развертывания") {
+  Container(console, "Интерфейс управления", "Веб-приложение", "Создание проектов, выпусков и просмотр стоимости")
+  Container(controlPlane, "Сервис управления платформой", "Сервер приложений", "Оркестрация жизненного цикла проекта")
+  Container(provisioner, "Модуль подготовки инфраструктуры Kubernetes", "Служба", "Создает пространство имен, сетевые политики и права доступа")
+  Container(githubIntegration, "Модуль интеграции GitHub", "Служба", "Подключение репозитория и генерация процессов автоматизации")
+  Container(releaseOrchestrator, "Модуль оркестрации выпусков", "Служба", "Обработка событий сборки и развертывания")
+  Container(monetization, "Модуль монетизации", "Служба", "Сбор потребления, расчет стоимости, лимиты")
+  ContainerDb(database, "Реляционная база данных PostgreSQL", "PostgreSQL", "Проекты, выпуски, интеграции, начисления")
+}
+
+System_Ext(github, "GitHub", "Репозиторий и процессы автоматизации")
+System_Ext(containerRegistry, "Реестр контейнерных образов", "Хранение образов")
+System_Ext(kubernetesHost, "Кластер Kubernetes", "Исполнение приложений")
+System_Ext(metrics, "Система телеметрии", "Метрики использования ресурсов")
+System_Ext(paymentProvider, "Платежный провайдер", "Оплата")
+
+Rel(user, console, "Управляет проектами и выпусками")
+Rel(console, controlPlane, "Вызывает программный интерфейс платформы")
+Rel(controlPlane, provisioner, "Запускает операции подготовки инфраструктуры")
+Rel(controlPlane, githubIntegration, "Запускает подключение репозитория и генерацию файлов")
+Rel(githubIntegration, github, "Создает запрос на включение изменений")
+Rel(github, containerRegistry, "Публикует образы")
+Rel(github, releaseOrchestrator, "Передает событие результата автоматизации")
+Rel(releaseOrchestrator, controlPlane, "Обновляет состояние выпуска")
+Rel(provisioner, kubernetesHost, "Создает и обновляет ресурсы")
+Rel(monetization, metrics, "Получает данные потребления")
+Rel(monetization, paymentProvider, "Передает подготовленный счет")
+
+Rel(controlPlane, database, "Чтение и запись")
+Rel(releaseOrchestrator, database, "Чтение и запись")
+Rel(githubIntegration, database, "Чтение и запись")
+Rel(monetization, database, "Чтение и запись")
+
+SHOW_LEGEND()
+@enduml

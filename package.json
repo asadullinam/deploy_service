@@ -1,0 +1,14 @@
+{
+  "name": "kursach-2-tooling",
+  "private": true,
+  "devDependencies": {
+    "prettier": "^3.6.2",
+    "prettier-plugin-sql": "^0.19.2",
+    "sql-formatter": "^15.6.10"
+  },
+  "scripts": {
+    "format": "./scripts/format-files.sh --all",
+    "format:check": "node ./scripts/check-formatters.mjs",
+    "prepare": "git config core.hooksPath .githooks || true"
+  }
+}

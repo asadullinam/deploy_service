@@ -1,0 +1,35 @@
+# Gateway — управляется платформой, один на кластер.
+# Перед применением:
+#   1. Создать namespace: kubectl create namespace gateway
+#   2. Настроить wildcard DNS: *.apps.<domain> -> внешний IP Gateway
+#   3. Создать TLS-секрет: kubectl create secret tls wildcard-tls -n gateway \
+#        --cert=fullchain.pem --key=privkey.pem
+#
+# После применения получить внешний IP:
+#   kubectl get gateway platform-gateway -n gateway -o jsonpath='{.status.addresses[0].value}'
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: platform-gateway
+  namespace: gateway
+spec:
+  gatewayClassName: nginx
+  listeners:
+    - name: https
+      port: 443
+      protocol: HTTPS
+      hostname: "*.apps.deploy-platform.ru"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: wildcard-tls
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: http
+      port: 80
+      protocol: HTTP
+      hostname: "*.apps.deploy-platform.ru"
+      allowedRoutes:
+        namespaces:
+          from: All

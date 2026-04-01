@@ -1,0 +1,444 @@
+name: Deploy Service
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/deploy-deploy-service.yml"
+      - "deploy-service/**"
+      - "!deploy-service/tests/**"
+      - "!deploy-service/**/*_test.go"
+      - "k8s/deploy-service/**"
+      - "k8s/gateway/**"
+      - "k8s/monitoring/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    env:
+      NAMESPACE: deploy-service
+      POSTGRES_SERVICE_NAME: deploy-service-postgres
+      POSTGRES_DB: deploy_service
+      POSTGRES_USER: deploy
+      KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
+      YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
+      YC_OAUTH_TOKEN: ${{ secrets.YC_OAUTH_TOKEN }}
+      YC_MANAGED_K8S_CLUSTER_ID: ${{ secrets.YC_MANAGED_K8S_CLUSTER_ID }}
+      HTTP_ADDRESS: ":8080"
+      KUBERNETES_PROVISIONER: "kubectl"
+      GITHUB_AUTOMATION_MODE: "real"
+      YC_CLI_INITIALIZATION_SILENCE: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: deploy-service/go.mod
+
+      - name: Validate UI scripts
+        run: |
+          node --check deploy-service/internal/http/ui/app.js
+
+      - name: Validate admin notification script
+        run: bash -n .github/scripts/send-telegram-admins.sh
+
+      - name: Run tests
+        working-directory: ./deploy-service
+        run: go test ./... -timeout 2m
+
+      - name: Resolve IMAGE_NAME (lowercase owner)
+        run: |
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          REPO_LC=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME=ghcr.io/${OWNER_LC}/${REPO_LC}:${GITHUB_SHA}" >> "$GITHUB_ENV"
+
+      - name: Validate required secrets
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.DEPLOY_SERVICE_POSTGRES_PASSWORD }}
+          JWT_SECRET: ${{ secrets.DEPLOY_SERVICE_JWT_SECRET }}
+          ENCRYPTION_KEY: ${{ secrets.DEPLOY_SERVICE_ENCRYPTION_KEY }}
+          KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
+          YC_MANAGED_K8S_CLUSTER_ID: ${{ secrets.YC_MANAGED_K8S_CLUSTER_ID }}
+          YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
+          YC_OAUTH_TOKEN: ${{ secrets.YC_OAUTH_TOKEN }}
+        run: |
+          required=(POSTGRES_PASSWORD JWT_SECRET ENCRYPTION_KEY)
+          for name in "${required[@]}"; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required secret: $name"
+              exit 1
+            fi
+          done
+          if [ -z "$KUBECONFIG_BASE64" ]; then
+            if [ -z "$YC_MANAGED_K8S_CLUSTER_ID" ]; then
+              echo "Missing deployment auth source: set KUBECONFIG_BASE64 or YC_MANAGED_K8S_CLUSTER_ID"
+              exit 1
+            fi
+            if [ -z "$YC_SERVICE_ACCOUNT_KEY_JSON" ] && [ -z "$YC_OAUTH_TOKEN" ]; then
+              echo "Missing YC credentials: set YC_SERVICE_ACCOUNT_KEY_JSON or YC_OAUTH_TOKEN to fetch kubeconfig"
+              exit 1
+            fi
+          fi
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./deploy-service
+          file: ./deploy-service/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_NAME }}
+
+      - name: Configure kubectl
+        if: ${{ env.KUBECONFIG_BASE64 != '' }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "$KUBECONFIG_BASE64" | base64 --decode > "$HOME/.kube/config"
+
+      - name: Install Yandex Cloud CLI
+        run: |
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i "$HOME/yandex-cloud" -n
+          echo "$HOME/yandex-cloud/bin" >> "$GITHUB_PATH"
+
+      - name: Configure Yandex Cloud profile
+        if: ${{ env.YC_SERVICE_ACCOUNT_KEY_JSON != '' || env.YC_OAUTH_TOKEN != '' }}
+        run: |
+          yc config profile create default || true
+          if [ -n "$YC_SERVICE_ACCOUNT_KEY_JSON" ]; then
+            printf '%s' "$YC_SERVICE_ACCOUNT_KEY_JSON" > "$HOME/sa-key.json"
+            yc config set service-account-key "$HOME/sa-key.json"
+          elif [ -n "$YC_OAUTH_TOKEN" ]; then
+            yc config set token "$YC_OAUTH_TOKEN"
+          fi
+
+      - name: Refresh kubeconfig from Yandex Cloud (optional)
+        if: ${{ env.YC_MANAGED_K8S_CLUSTER_ID != '' && (env.YC_SERVICE_ACCOUNT_KEY_JSON != '' || env.YC_OAUTH_TOKEN != '') }}
+        run: |
+          yc managed-kubernetes cluster get-credentials "$YC_MANAGED_K8S_CLUSTER_ID" --external --force
+
+      - name: Normalize kubeconfig exec command
+        run: |
+          CURRENT_CONTEXT=$(kubectl config current-context 2>/dev/null || true)
+          if [ -z "$CURRENT_CONTEXT" ]; then
+            CURRENT_CONTEXT=$(kubectl config view -o jsonpath="{.contexts[0].name}")
+            if [ -n "$CURRENT_CONTEXT" ]; then
+              kubectl config use-context "$CURRENT_CONTEXT"
+            fi
+          fi
+          CURRENT_USER=""
+          if [ -n "$CURRENT_CONTEXT" ]; then
+            CURRENT_USER=$(kubectl config view -o jsonpath="{.contexts[?(@.name==\"$CURRENT_CONTEXT\")].context.user}")
+          fi
+          if [ -n "$CURRENT_USER" ]; then
+            kubectl config set-credentials "$CURRENT_USER" \
+              --exec-command=yc \
+              --exec-api-version=client.authentication.k8s.io/v1beta1 \
+              --exec-arg=managed-kubernetes \
+              --exec-arg=create-token
+          fi
+
+      - name: Verify Kubernetes API connectivity
+        run: |
+          API_SERVER=$(kubectl config view --minify -o jsonpath="{.clusters[0].cluster.server}")
+          echo "Kubernetes API endpoint: $API_SERVER"
+          if ! kubectl --request-timeout=20s get --raw=/version > /tmp/k8s-version.json; then
+            echo "::error::Не удалось подключиться к Kubernetes API ($API_SERVER). Проверь, что kubeconfig указывает на внешний endpoint кластера, либо запускай деплой на self-hosted runner в той же сети."
+            exit 1
+          fi
+          cat /tmp/k8s-version.json
+
+      - name: Ensure deploy-service dedicated nodes
+        env:
+          DEPLOY_SERVICE_NODE_GROUP_ID: ${{ secrets.DEPLOY_SERVICE_NODE_GROUP_ID }}
+        run: |
+          if [ -z "${DEPLOY_SERVICE_NODE_GROUP_ID:-}" ]; then
+            echo "::error::DEPLOY_SERVICE_NODE_GROUP_ID secret is required to keep deploy-service isolated on its dedicated node group."
+            exit 1
+          fi
+
+          mapfile -t nodes < <(kubectl get nodes -l "yandex.cloud/node-group-id=${DEPLOY_SERVICE_NODE_GROUP_ID}" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort)
+          if [ "${#nodes[@]}" -eq 0 ]; then
+            echo "::error::No nodes found for yandex.cloud/node-group-id=${DEPLOY_SERVICE_NODE_GROUP_ID}"
+            exit 1
+          fi
+
+          ready_nodes=()
+          for node in "${nodes[@]}"; do
+            [ -n "$node" ] || continue
+            ready="$(kubectl get node "$node" -o jsonpath='{range .status.conditions[?(@.type=="Ready")]}{.status}{end}')"
+            if [ "$ready" = "True" ]; then
+              ready_nodes+=("$node")
+            fi
+          done
+
+          if [ "${#ready_nodes[@]}" -eq 0 ]; then
+            echo "::error::Dedicated deploy-service node group exists, but none of its nodes are Ready."
+            exit 1
+          fi
+
+          dedicated_node="${ready_nodes[0]}"
+          echo "Using dedicated deploy-service node: $dedicated_node"
+
+          for node in "${nodes[@]}"; do
+            [ -n "$node" ] || continue
+            if [ "$node" = "$dedicated_node" ]; then
+              kubectl label node "$node" dedicated=deploy-service --overwrite
+              kubectl taint node "$node" dedicated=deploy-service:NoSchedule --overwrite
+            else
+              kubectl taint node "$node" dedicated=deploy-service:NoSchedule- >/dev/null 2>&1 || true
+              kubectl label node "$node" dedicated- >/dev/null 2>&1 || true
+            fi
+          done
+
+          kubectl get nodes -o wide
+
+      - name: Ensure namespace exists
+        run: kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Configure ingress TLS
+        env:
+          TLS_CERT_PEM: ${{ secrets.TLS_CERT_PEM }}
+          TLS_KEY_PEM: ${{ secrets.TLS_KEY_PEM }}
+        run: |
+          if [ -z "$TLS_CERT_PEM" ] || [ -z "$TLS_KEY_PEM" ]; then
+            echo "TLS secrets are not configured, skipping ingress TLS setup"
+            exit 0
+          fi
+
+          TMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "$TMP_DIR"' EXIT
+          printf '%s' "$TLS_CERT_PEM" > "$TMP_DIR/tls.crt"
+          printf '%s' "$TLS_KEY_PEM" > "$TMP_DIR/tls.key"
+
+          kubectl -n ingress-nginx create secret tls wildcard-sslip \
+            --cert="$TMP_DIR/tls.crt" \
+            --key="$TMP_DIR/tls.key" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          if ! kubectl -n ingress-nginx get deployment ingress-nginx-controller -o jsonpath='{.spec.template.spec.containers[0].args}' | grep -q -- '--default-ssl-certificate=ingress-nginx/wildcard-sslip'; then
+            kubectl -n ingress-nginx patch deployment ingress-nginx-controller --type='json' -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--default-ssl-certificate=ingress-nginx/wildcard-sslip"}]'
+          fi
+
+          kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=300s
+
+      - name: Ensure Gateway API CRDs
+        run: |
+          kubectl get crd gateways.gateway.networking.k8s.io >/dev/null 2>&1 || \
+            kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/standard-install.yaml
+
+      - name: Deploy Gateway API manifests
+        run: |
+          kubectl create namespace gateway --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -k k8s/gateway
+
+      - name: Deploy shared monitoring stack
+        run: |
+          kubectl apply -k k8s/monitoring
+          kubectl -n monitoring rollout status deployment/prometheus --timeout=300s
+      - name: Apply deploy-service RBAC
+        run: kubectl apply -f k8s/deploy-service/rbac.yaml
+
+      - name: Apply deploy-service postgres secret
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.DEPLOY_SERVICE_POSTGRES_PASSWORD }}
+        run: |
+          kubectl -n "$NAMESPACE" create secret generic deploy-service-postgres \
+            --from-literal=POSTGRES_DB="$POSTGRES_DB" \
+            --from-literal=POSTGRES_USER="$POSTGRES_USER" \
+            --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy postgres manifests
+        run: |
+          kubectl -n "$NAMESPACE" apply -f k8s/deploy-service/postgres-service.yaml
+          kubectl -n "$NAMESPACE" apply -f k8s/deploy-service/postgres-statefulset.yaml
+
+      - name: Wait for postgres
+        run: |
+          kubectl -n "$NAMESPACE" rollout status statefulset/deploy-service-postgres --timeout=300s
+          kubectl -n "$NAMESPACE" wait --for=condition=ready pod -l app=deploy-service-postgres --timeout=300s
+
+      - name: Notify admins deploy started
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.DEPLOY_SERVICE_TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_IDS: ${{ secrets.DEPLOY_SERVICE_TELEGRAM_ADMIN_CHAT_IDS }}
+          TELEGRAM_ADMIN_USERNAMES: ${{ secrets.DEPLOY_SERVICE_TELEGRAM_ADMIN_USERNAMES }}
+          TELEGRAM_MESSAGE: |
+            [admin] [info] Deploy Service: старт выката
+            Репозиторий: ${{ github.repository }}
+            SHA: ${{ github.sha }}
+            Инициатор: ${{ github.actor }}
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/scripts/send-telegram-admins.sh
+
+      - name: Resolve deploy-service public host
+        env:
+          APPS_BASE_DOMAIN: ${{ secrets.APPS_BASE_DOMAIN }}
+          DEPLOY_SERVICE_PUBLIC_URL: ${{ secrets.DEPLOY_SERVICE_PUBLIC_URL }}
+          APPS_PUBLIC_SCHEME: ${{ secrets.APPS_PUBLIC_SCHEME }}
+          APPS_PUBLIC_PORT: ${{ secrets.APPS_PUBLIC_PORT }}
+        run: |
+          configured_host="$(printf '%s' "$APPS_BASE_DOMAIN" | tr -d '[:space:]')"
+          configured_public_url="$(printf '%s' "$DEPLOY_SERVICE_PUBLIC_URL" | tr -d '[:space:]')"
+          current_ingress_ip="$(kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+          current_ingress_hostname="$(kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+
+          if [ -z "$current_ingress_ip" ] && [ -z "$current_ingress_hostname" ]; then
+            current_ingress_ip="$(kubectl -n "$NAMESPACE" get ingress deploy-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+            current_ingress_hostname="$(kubectl -n "$NAMESPACE" get ingress deploy-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+          fi
+
+          if [ -z "$current_ingress_ip" ] && [ -z "$current_ingress_hostname" ]; then
+            current_ingress_ip="$(kubectl get nodes -o jsonpath='{range .items[*].status.addresses[?(@.type=="ExternalIP")]}{.address}{"\n"}{end}' | head -n1)"
+          fi
+
+          effective_host="$configured_host"
+          if printf '%s' "$configured_host" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.sslip\.io$'; then
+            configured_ip="${configured_host%.sslip.io}"
+            if [ -n "$current_ingress_ip" ] && [ "$configured_ip" != "$current_ingress_ip" ]; then
+              echo "Configured APPS_BASE_DOMAIN uses stale sslip IP ($configured_ip), switching to $current_ingress_ip.sslip.io"
+              effective_host="$current_ingress_ip.sslip.io"
+            fi
+          elif [ -z "$configured_host" ] && [ -n "$current_ingress_ip" ]; then
+            effective_host="$current_ingress_ip.sslip.io"
+          elif [ -z "$configured_host" ] && [ -n "$current_ingress_hostname" ]; then
+            effective_host="$current_ingress_hostname"
+          fi
+
+          effective_scheme="${APPS_PUBLIC_SCHEME:-https}"
+          effective_port="${APPS_PUBLIC_PORT:-}"
+          if [ -z "$effective_port" ] && [ -z "$current_ingress_ip" ] && [ -z "$current_ingress_hostname" ]; then
+            effective_port="32443"
+          fi
+          effective_public_url="$configured_public_url"
+          public_port_suffix=""
+          if [ -n "$effective_port" ] && [ "$effective_port" != "443" ] && [ "$effective_port" != "80" ]; then
+            public_port_suffix=":$effective_port"
+          fi
+          if [ -z "$effective_public_url" ] && [ -n "$effective_host" ]; then
+            effective_public_url="${effective_scheme}://${effective_host}${public_port_suffix}"
+          elif printf '%s' "$effective_public_url" | grep -Eq 'https?://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.sslip\.io(:[0-9]+)?$'; then
+            configured_public_host="$(printf '%s' "$effective_public_url" | sed -E 's#https?://([^/:]+).*#\1#')"
+            configured_public_ip="${configured_public_host%.sslip.io}"
+            if [ -n "$current_ingress_ip" ] && [ "$configured_public_ip" != "$current_ingress_ip" ]; then
+              effective_public_url="${effective_scheme}://${effective_host}${public_port_suffix}"
+            fi
+          fi
+
+          echo "EFFECTIVE_APPS_BASE_DOMAIN=$effective_host" >> "$GITHUB_ENV"
+          echo "EFFECTIVE_PUBLIC_URL=$effective_public_url" >> "$GITHUB_ENV"
+          echo "Using deploy-service host: ${effective_host:-<empty>}"
+          echo "Using deploy-service public URL: ${effective_public_url:-<empty>}"
+
+      - name: Apply deploy-service secret
+        env:
+          DATABASE_URL: postgres://${{ env.POSTGRES_USER }}:${{ secrets.DEPLOY_SERVICE_POSTGRES_PASSWORD }}@${{ env.POSTGRES_SERVICE_NAME }}:5432/${{ env.POSTGRES_DB }}?sslmode=disable
+          JWT_SECRET: ${{ secrets.DEPLOY_SERVICE_JWT_SECRET }}
+          ENCRYPTION_KEY: ${{ secrets.DEPLOY_SERVICE_ENCRYPTION_KEY }}
+          GITHUB_TOKEN: ${{ secrets.DEPLOY_SERVICE_GITHUB_TOKEN }}
+          GITHUB_WEBHOOK_SECRET: ${{ secrets.DEPLOY_SERVICE_WEBHOOK_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.DEPLOY_SERVICE_TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_BOT_USERNAME: ${{ secrets.DEPLOY_SERVICE_TELEGRAM_BOT_USERNAME }}
+          TELEGRAM_ADMIN_USERNAMES: ${{ secrets.DEPLOY_SERVICE_TELEGRAM_ADMIN_USERNAMES }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.DEPLOY_SERVICE_TELEGRAM_WEBHOOK_SECRET }}
+          APPS_BASE_DOMAIN: ${{ env.EFFECTIVE_APPS_BASE_DOMAIN }}
+          APPS_PUBLIC_SCHEME: ${{ secrets.APPS_PUBLIC_SCHEME }}
+          APPS_PUBLIC_PORT: ${{ secrets.APPS_PUBLIC_PORT }}
+          PUBLIC_URL: ${{ env.EFFECTIVE_PUBLIC_URL }}
+          GATEWAY_CONTROLLER_NAMESPACE: ${{ secrets.GATEWAY_CONTROLLER_NAMESPACE }}
+          PROMETHEUS_BASE_URL: ${{ secrets.DEPLOY_SERVICE_PROMETHEUS_BASE_URL }}
+          LOKI_BASE_URL: ${{ secrets.DEPLOY_SERVICE_LOKI_BASE_URL }}
+          PROMETHEUS_AUTH_TOKEN: ${{ secrets.DEPLOY_SERVICE_PROMETHEUS_AUTH_TOKEN }}
+          MONITORING_NAMESPACE: "monitoring"
+        run: |
+          PROMETHEUS_BASE_URL_VALUE="$PROMETHEUS_BASE_URL"
+          if [ -z "$PROMETHEUS_BASE_URL_VALUE" ]; then
+            PROMETHEUS_BASE_URL_VALUE="http://prometheus.monitoring.svc.cluster.local:9090"
+          fi
+          LOKI_BASE_URL_VALUE="$LOKI_BASE_URL"
+          if [ -z "$LOKI_BASE_URL_VALUE" ]; then
+            LOKI_BASE_URL_VALUE="http://loki.monitoring.svc.cluster.local:3100"
+          fi
+          kubectl -n "$NAMESPACE" create secret generic deploy-service-env \
+            --from-literal=DATABASE_URL="$DATABASE_URL" \
+            --from-literal=JWT_SECRET="$JWT_SECRET" \
+            --from-literal=ENCRYPTION_KEY="$ENCRYPTION_KEY" \
+            --from-literal=HTTP_ADDRESS="$HTTP_ADDRESS" \
+            --from-literal=KUBERNETES_PROVISIONER="$KUBERNETES_PROVISIONER" \
+            --from-literal=GITHUB_AUTOMATION_MODE="$GITHUB_AUTOMATION_MODE" \
+            --from-literal=YC_CLI_INITIALIZATION_SILENCE="$YC_CLI_INITIALIZATION_SILENCE" \
+            --from-literal=GITHUB_TOKEN="$GITHUB_TOKEN" \
+            --from-literal=GITHUB_WEBHOOK_SECRET="$GITHUB_WEBHOOK_SECRET" \
+            --from-literal=TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" \
+            --from-literal=TELEGRAM_BOT_USERNAME="$TELEGRAM_BOT_USERNAME" \
+            --from-literal=TELEGRAM_ADMIN_USERNAMES="$TELEGRAM_ADMIN_USERNAMES" \
+            --from-literal=TELEGRAM_WEBHOOK_SECRET="$TELEGRAM_WEBHOOK_SECRET" \
+            --from-literal=APPS_BASE_DOMAIN="$APPS_BASE_DOMAIN" \
+            --from-literal=APPS_PUBLIC_SCHEME="$APPS_PUBLIC_SCHEME" \
+            --from-literal=APPS_PUBLIC_PORT="$APPS_PUBLIC_PORT" \
+            --from-literal=PUBLIC_URL="$PUBLIC_URL" \
+            --from-literal=GATEWAY_CONTROLLER_NAMESPACE="$GATEWAY_CONTROLLER_NAMESPACE" \
+            --from-literal=PROMETHEUS_BASE_URL="$PROMETHEUS_BASE_URL_VALUE" \
+            --from-literal=LOKI_BASE_URL="$LOKI_BASE_URL_VALUE" \
+            --from-literal=PROMETHEUS_AUTH_TOKEN="$PROMETHEUS_AUTH_TOKEN" \
+            --from-literal=MONITORING_NAMESPACE="$MONITORING_NAMESPACE" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy deploy-service manifests
+        env:
+          APPS_BASE_DOMAIN: ${{ env.EFFECTIVE_APPS_BASE_DOMAIN }}
+        run: |
+          sed "s#IMAGE_PLACEHOLDER#${IMAGE_NAME}#g" k8s/deploy-service/deployment.yaml | kubectl -n "$NAMESPACE" apply -f -
+          kubectl -n "$NAMESPACE" apply -f k8s/deploy-service/service.yaml
+          if [ -n "$APPS_BASE_DOMAIN" ]; then
+            sed "s#DEPLOY_SERVICE_HOST_PLACEHOLDER#${APPS_BASE_DOMAIN}#g" k8s/deploy-service/ingress.yaml | kubectl -n "$NAMESPACE" apply -f -
+          fi
+
+      - name: Wait for rollout
+        run: kubectl -n "$NAMESPACE" rollout status deployment/deploy-service --timeout=180s
+
+      - name: Show deployed resources
+        run: |
+          kubectl -n "$NAMESPACE" get statefulset deploy-service-postgres
+          kubectl -n "$NAMESPACE" get service deploy-service-postgres
+          kubectl -n "$NAMESPACE" get deployment deploy-service
+          kubectl -n "$NAMESPACE" get service deploy-service
+          kubectl -n "$NAMESPACE" get pods -l app=deploy-service
+          kubectl -n "$NAMESPACE" get pods -l app=deploy-service-postgres
+
+      - name: Notify admins deploy result
+        if: ${{ always() }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.DEPLOY_SERVICE_TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_IDS: ${{ secrets.DEPLOY_SERVICE_TELEGRAM_ADMIN_CHAT_IDS }}
+          TELEGRAM_ADMIN_USERNAMES: ${{ secrets.DEPLOY_SERVICE_TELEGRAM_ADMIN_USERNAMES }}
+          DEPLOY_JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ "$DEPLOY_JOB_STATUS" = "success" ]; then
+            severity="[admin] [info]"
+            summary="Deploy Service: выкатка завершена"
+          else
+            severity="[admin] [critical]"
+            summary="Deploy Service: выкатка завершилась ошибкой"
+          fi
+          export TELEGRAM_MESSAGE="$severity $summary
+          Репозиторий: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          Инициатор: ${{ github.actor }}
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          bash .github/scripts/send-telegram-admins.sh

@@ -1,0 +1,2 @@
+ALTER TABLE projects
+ADD COLUMN public_url TEXT NOT NULL DEFAULT '';

@@ -1,0 +1,2 @@
+ALTER TABLE projects
+ADD COLUMN IF NOT EXISTS dedicated_load_balancer BOOLEAN NOT NULL DEFAULT FALSE;

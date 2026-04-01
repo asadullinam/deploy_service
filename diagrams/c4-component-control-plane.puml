@@ -1,0 +1,45 @@
+@startuml
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_LEFT_RIGHT()
+
+Container_Boundary(controlPlane, "Сервис управления платформой") {
+  Component(apiController, "Контроллер программного интерфейса", "Слой входа", "Принимает команды создания проекта, выпуска и возврата версии")
+  Component(projectService, "Сервис управления проектом", "Доменный сервис", "Жизненный цикл проекта и правила переходов состояний")
+  Component(releaseService, "Сервис управления выпуском", "Доменный сервис", "Состояние выпуска, повторные попытки, возврат версии")
+  Component(policyService, "Сервис сетевой политики", "Доменный сервис", "Шаблоны и контроль сетевой изоляции")
+  Component(accessService, "Сервис доступов", "Доменный сервис", "Роли, учетные данные, права пользователя")
+  Component(monetizationFacade, "Фасад монетизации", "Интеграционный компонент", "Передача событий использования и лимитов")
+  Component(provisionerClient, "Клиент подготовки инфраструктуры", "Интеграционный компонент", "Вызов операций Kubernetes")
+  Component(githubClient, "Клиент интеграции GitHub", "Интеграционный компонент", "Команды создания процессов автоматизации")
+  Component(releaseEventHandler, "Обработчик событий выпуска", "Интеграционный компонент", "Получение результата автоматизации")
+  Component(repositoryLayer, "Слой работы с данными", "Репозитории", "Доступ к PostgreSQL через sqlc")
+}
+
+ContainerDb(database, "Реляционная база данных PostgreSQL", "PostgreSQL")
+Container(provisioner, "Модуль подготовки инфраструктуры Kubernetes", "Служба")
+Container(githubIntegration, "Модуль интеграции GitHub", "Служба")
+Container(releaseOrchestrator, "Модуль оркестрации выпусков", "Служба")
+Container(monetization, "Модуль монетизации", "Служба")
+
+Rel(apiController, projectService, "Вызов доменной команды")
+Rel(apiController, releaseService, "Вызов доменной команды")
+Rel(projectService, policyService, "Применение политики")
+Rel(projectService, accessService, "Создание доступа")
+Rel(projectService, provisionerClient, "Создание среды проекта")
+Rel(projectService, githubClient, "Инициализация автоматизации")
+Rel(releaseService, githubClient, "Запуск операций выпуска")
+Rel(releaseEventHandler, releaseService, "Обновление состояния выпуска")
+Rel(projectService, monetizationFacade, "Передача события создания проекта")
+Rel(releaseService, monetizationFacade, "Передача события потребления ресурсов")
+Rel(projectService, repositoryLayer, "Чтение и запись")
+Rel(releaseService, repositoryLayer, "Чтение и запись")
+Rel(repositoryLayer, database, "Чтение и запись")
+
+Rel(provisionerClient, provisioner, "Вызов операций")
+Rel(githubClient, githubIntegration, "Вызов операций")
+Rel(releaseEventHandler, releaseOrchestrator, "Получение событий")
+Rel(monetizationFacade, monetization, "Передача финансовых событий")
+
+SHOW_LEGEND()
+@enduml
